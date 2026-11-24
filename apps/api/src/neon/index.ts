@@ -132,14 +132,22 @@ export async function testAiGateway(config: NeonConfig) {
 /**
  * 5. Neon Functions Service (Serverless Compute)
  */
-export async function testNeonFunction(functionUrl: string) {
-  const res = await fetch(functionUrl);
-  const text = await res.text();
-  return {
-    status: res.ok ? 'success' : 'failed',
-    httpStatus: res.status,
-    response: text.trim(),
-  };
+export async function testNeonFunction(functionUrl: string, retries = 2) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fetch(functionUrl);
+      const text = await res.text();
+      return {
+        status: res.ok ? 'success' : 'failed',
+        httpStatus: res.status,
+        response: text.trim(),
+      };
+    } catch (err) {
+      if (i === retries) throw err;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  throw new Error('Neon Function request failed after retries');
 }
 
 /**
