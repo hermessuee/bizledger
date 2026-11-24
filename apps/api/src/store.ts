@@ -228,7 +228,7 @@ export class MemoryStore {
     // 3. Parties
     this.parties = [
       {
-        id: 'p0000001-0000-0000-0000-000000000001',
+        id: '70000001-0000-0000-0000-000000000001',
         businessId: this.business.id,
         kind: 'customer',
         name: 'Shree Ram Enterprises',
@@ -242,7 +242,7 @@ export class MemoryStore {
         isActive: true,
       },
       {
-        id: 'p0000001-0000-0000-0000-000000000002',
+        id: '70000001-0000-0000-0000-000000000002',
         businessId: this.business.id,
         kind: 'customer',
         name: 'TechCorp Solutions Bengaluru',
@@ -256,7 +256,7 @@ export class MemoryStore {
         isActive: true,
       },
       {
-        id: 'p0000001-0000-0000-0000-000000000003',
+        id: '70000001-0000-0000-0000-000000000003',
         businessId: this.business.id,
         kind: 'vendor',
         name: 'Mahalaxmi Stationery & Logistics',
@@ -274,7 +274,7 @@ export class MemoryStore {
     // 4. Items
     this.items = [
       {
-        id: 'i0000001-0000-0000-0000-000000000001',
+        id: '80000001-0000-0000-0000-000000000001',
         businessId: this.business.id,
         name: 'Accounting Consultation Services',
         hsnSac: '998222',
@@ -286,7 +286,7 @@ export class MemoryStore {
         stockQty: 0,
       },
       {
-        id: 'i0000001-0000-0000-0000-000000000002',
+        id: '80000001-0000-0000-0000-000000000002',
         businessId: this.business.id,
         name: 'Enterprise Server Hard Drive 2TB',
         hsnSac: '847170',
@@ -298,7 +298,7 @@ export class MemoryStore {
         stockQty: 45,
       },
       {
-        id: 'i0000001-0000-0000-0000-000000000003',
+        id: '80000001-0000-0000-0000-000000000003',
         businessId: this.business.id,
         name: 'GST Filing & Compliance Retainer',
         hsnSac: '998231',
@@ -326,7 +326,7 @@ export class MemoryStore {
         id: 'c0000001-0000-0000-0000-000000000001',
         businessId: this.business.id,
         direction: 'received',
-        partyId: 'p0000001-0000-0000-0000-000000000001',
+        partyId: '70000001-0000-0000-0000-000000000001',
         partyName: 'Shree Ram Enterprises',
         chequeNo: '000412',
         bankName: 'State Bank of India',
@@ -342,7 +342,7 @@ export class MemoryStore {
         id: 'c0000001-0000-0000-0000-000000000002',
         businessId: this.business.id,
         direction: 'received',
-        partyId: 'p0000001-0000-0000-0000-000000000002',
+        partyId: '70000001-0000-0000-0000-000000000002',
         partyName: 'TechCorp Solutions Bengaluru',
         chequeNo: '552319',
         bankName: 'ICICI Bank',
@@ -358,7 +358,7 @@ export class MemoryStore {
         id: 'c0000001-0000-0000-0000-000000000003',
         businessId: this.business.id,
         direction: 'issued',
-        partyId: 'p0000001-0000-0000-0000-000000000003',
+        partyId: '70000001-0000-0000-0000-000000000003',
         partyName: 'Mahalaxmi Stationery & Logistics',
         chequeNo: '100801',
         bankName: 'HDFC Bank',

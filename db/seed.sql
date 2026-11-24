@@ -92,24 +92,24 @@ ON CONFLICT (business_id, code) DO NOTHING;
 
 -- 4. Sample Parties
 INSERT INTO parties (id, business_id, kind, name, gstin, phone, email, address, credit_days, opening_balance) VALUES
-('p0000001-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'customer', 'Shree Ram Enterprises', '27BBRPA9876K1Z1', '9820011223', 'accounts@shreeram.in', 'Dadar West, Mumbai, MH', 30, 0),
-('p0000001-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'customer', 'TechCorp Solutions Bengaluru', '29AAGCT5544R1Z0', '9845012345', 'billing@techcorp.io', 'Whitefield, Bengaluru, KA', 15, 0),
-('p0000001-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'vendor', 'Mahalaxmi Stationery & Logistics', '27AAMFM3322P1Z8', '9821098765', 'orders@mahalaxmi.com', 'Fort, Mumbai, MH', 30, 0)
+('70000001-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'customer', 'Shree Ram Enterprises', '27BBRPA9876K1Z1', '9820011223', 'accounts@shreeram.in', 'Dadar West, Mumbai, MH', 30, 0),
+('70000001-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'customer', 'TechCorp Solutions Bengaluru', '29AAGCT5544R1Z0', '9845012345', 'billing@techcorp.io', 'Whitefield, Bengaluru, KA', 15, 0),
+('70000001-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'vendor', 'Mahalaxmi Stationery & Logistics', '27AAMFM3322P1Z8', '9821098765', 'orders@mahalaxmi.com', 'Fort, Mumbai, MH', 30, 0)
 ON CONFLICT (id) DO NOTHING;
 
 -- 5. Sample Items
 INSERT INTO items (id, business_id, name, hsn_sac, unit, sale_price, purchase_price, gst_rate, track_stock, stock_qty) VALUES
-('i0000001-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Accounting Consultation Services', '998222', 'Hours', 250000, 0, 18.0, false, 0),
-('i0000001-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'Enterprise Server Hard Drive 2TB', '847170', 'Nos', 750000, 520000, 18.0, true, 45),
-('i0000001-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'GST Filing & Compliance Retainer', '998231', 'Months', 1000000, 0, 18.0, false, 0)
+('80000001-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Accounting Consultation Services', '998222', 'Hours', 250000, 0, 18.0, false, 0),
+('80000001-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'Enterprise Server Hard Drive 2TB', '847170', 'Nos', 750000, 520000, 18.0, true, 45),
+('80000001-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'GST Filing & Compliance Retainer', '998231', 'Months', 1000000, 0, 18.0, false, 0)
 ON CONFLICT (id) DO NOTHING;
 
 -- 6. Sample Cheques to demonstrate Alerts (Overdue, Due Today, Upcoming)
 INSERT INTO cheques (id, business_id, direction, party_id, cheque_no, bank_name, branch, amount, cheque_date, status, remarks) VALUES
 -- Overdue Cheque (Date 5 days ago)
-('c0000001-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'received', 'p0000001-0000-0000-0000-000000000001', '000412', 'State Bank of India', 'Dadar Branch', 12500000, CURRENT_DATE - INTERVAL '5 days', 'pending', 'Invoice 001 partial payment'),
+('c0000001-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'received', '70000001-0000-0000-0000-000000000001', '000412', 'State Bank of India', 'Dadar Branch', 12500000, CURRENT_DATE - INTERVAL '5 days', 'pending', 'Invoice 001 partial payment'),
 -- Due Today Cheque
-('c0000001-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'received', 'p0000001-0000-0000-0000-000000000002', '552319', 'ICICI Bank', 'Whitefield Branch', 8500000, CURRENT_DATE, 'pending', 'Annual maintenance PDC'),
+('c0000001-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'received', '70000001-0000-0000-0000-000000000002', '552319', 'ICICI Bank', 'Whitefield Branch', 8500000, CURRENT_DATE, 'pending', 'Annual maintenance PDC'),
 -- Upcoming Cheque (Due in 4 days)
-('c0000001-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'issued', 'p0000001-0000-0000-0000-000000000003', '100801', 'HDFC Bank', 'Andheri East', 4200000, CURRENT_DATE + INTERVAL '4 days', 'pending', 'Office supplies advance')
+('c0000001-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'issued', '70000001-0000-0000-0000-000000000003', '100801', 'HDFC Bank', 'Andheri East', 4200000, CURRENT_DATE + INTERVAL '4 days', 'pending', 'Office supplies advance')
 ON CONFLICT (id) DO NOTHING;
