@@ -2,8 +2,8 @@ import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 
 export const metadata = {
-  title: 'BizLedger - Small Business Accounting & Finance',
-  description: 'Double-entry accounting, GST invoicing, cheque management and financial reporting.',
+  title: 'Hermes ERP - Enterprise Management & Financial Suite',
+  description: 'Enterprise double-entry accounting, Indian GST invoicing, cheque management, and multi-distributor administration.',
 };
 
 export default function RootLayout({

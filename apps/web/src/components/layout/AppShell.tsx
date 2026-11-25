@@ -151,12 +151,14 @@ export function AppShell({
     }
   }, [user]);
 
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
         <div className="flex flex-col items-center space-y-3">
-          <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-sm text-slate-400">Loading BizLedger...</p>
+          <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm text-slate-400">Loading Hermes ERP...</p>
         </div>
       </div>
     );
@@ -184,13 +186,15 @@ export function AppShell({
         {/* Brand */}
         <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800 bg-slate-950/40">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white shadow-md shadow-blue-500/20">
-              BL
-            </div>
+            <img
+              src={`${basePath}/hermes-logo.jpg`}
+              alt="Hermes Logo"
+              className="w-9 h-9 rounded-lg object-contain bg-white p-0.5 shadow-md shadow-amber-500/10 border border-amber-500/30"
+            />
             <div>
-              <span className="font-bold text-base tracking-wide text-white">BizLedger</span>
-              <span className="block text-[10px] text-blue-400 uppercase font-mono tracking-wider">
-                India GST Edition
+              <span className="font-bold text-base tracking-wide text-white">Hermes ERP</span>
+              <span className="block text-[10px] text-amber-400 uppercase font-mono tracking-wider">
+                Distribution Edition
               </span>
             </div>
           </div>

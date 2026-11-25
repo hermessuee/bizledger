@@ -110,15 +110,15 @@ export default function SuperAdminPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <div className="flex items-center space-x-2.5">
-              <div className="p-2 bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 rounded-xl">
+              <div className="p-2 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-xl">
                 <ShieldAlert className="w-6 h-6" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-                  Distributor Platform Administration
+                  Hermes Super-Admin Portal
                 </h1>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Manage all tenant distributor businesses, module access permissions, and account statuses.
+                  Global multi-tenant governance, module access toggles, and distributor management.
                 </p>
               </div>
             </div>
