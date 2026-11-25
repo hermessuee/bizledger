@@ -29,11 +29,10 @@ app.use('*', async (c, next) => {
   await next();
 });
 
-// CORS middleware allowing configured origin or localhost
+// CORS middleware allowing GitHub Pages, custom domains, and localhost
 app.use('*', async (c, next) => {
-  const origin = c.env?.ALLOWED_ORIGIN || '*';
   return cors({
-    origin: origin === '*' ? '*' : [origin, 'http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: (origin) => origin || '*',
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
