@@ -28,16 +28,6 @@ jobs:
       - name: Run Unit & Accounting Tests
         run: npm run test --workspace=@bizledger/api
 
-      - name: Deploy Worker to Cloudflare
-        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: 'apps/api'
-          command: deploy
-
-      - name: Check Cloudflare credentials
-        if: ${{ secrets.CLOUDFLARE_API_TOKEN == '' }}
+      - name: Notice on backend API hosting
         run: |
-          echo "::notice title=Cloudflare Deployment Skipped::Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to GitHub Secrets (Settings > Secrets and variables > Actions) to enable automated deployment."
+          echo "::notice title=Backend API Live on Neon::Backend API is deployed and hosted on Neon Functions at https://br-purple-night-bep8owab-api.compute.c-9.us-east-2.aws.neon.tech"
