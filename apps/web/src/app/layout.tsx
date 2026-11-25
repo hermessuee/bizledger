@@ -6,6 +6,12 @@ export const metadata = {
   description: 'Enterprise double-entry accounting, Indian GST invoicing, cheque management, and multi-distributor administration.',
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+};
+
 export default function RootLayout({
   children,
 }: {

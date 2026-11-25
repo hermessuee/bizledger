@@ -12,10 +12,7 @@ import {
   ArrowRight,
   ShieldAlert,
   Play,
-  Volume2,
-  VolumeX,
   X,
-  Sparkles,
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -30,10 +27,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [isAdminMode, setIsAdminMode] = useState(false);
 
-  // Full-screen video state
+  // Pure full-screen video state
   const [showVideo, setShowVideo] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [needsUserClickForSound, setNeedsUserClickForSound] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
 
@@ -45,38 +40,22 @@ export default function LoginPage() {
     }
   }, []);
 
-  // Attempt to play full-screen video with sound on mount
+  // Attempt to play pure full-screen video with sound on mount
   useEffect(() => {
     if (showVideo && videoRef.current) {
       videoRef.current.muted = false;
       const playPromise = videoRef.current.play();
       if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            setIsMuted(false);
-            setNeedsUserClickForSound(false);
-          })
-          .catch((err) => {
-            // Browser policy blocked unmuted autoplay without prior interaction
-            console.log('Unmuted autoplay prevented by browser; starting muted with click-to-unmute:', err);
-            if (videoRef.current) {
-              videoRef.current.muted = true;
-              setIsMuted(true);
-              setNeedsUserClickForSound(true);
-              videoRef.current.play().catch(() => {});
-            }
-          });
+        playPromise.catch(() => {
+          // If browser policy restricts unmuted autoplay, start muted
+          if (videoRef.current) {
+            videoRef.current.muted = true;
+            videoRef.current.play().catch(() => {});
+          }
+        });
       }
     }
   }, [showVideo]);
-
-  const handleUnmuteSound = () => {
-    if (videoRef.current) {
-      videoRef.current.muted = false;
-      setIsMuted(false);
-      setNeedsUserClickForSound(false);
-    }
-  };
 
   const handleVideoClose = () => {
     sessionStorage.setItem('hermes_intro_seen', 'true');
@@ -96,8 +75,6 @@ export default function LoginPage() {
         p.catch(() => {
           if (videoRef.current) {
             videoRef.current.muted = true;
-            setIsMuted(true);
-            setNeedsUserClickForSound(true);
             videoRef.current.play().catch(() => {});
           }
         });
@@ -107,12 +84,10 @@ export default function LoginPage() {
 
   const handleAdminPortalClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    // If already logged in as super_admin, navigate directly
     if (user && (user.role === 'super_admin' || user.username === 'anoopsue')) {
       router.push('/super-admin');
       return;
     }
-    // Set admin mode, prefill username with anoopsue, focus password field
     setIsAdminMode(true);
     setUsernameOrEmail('anoopsue');
     setError(null);
@@ -128,7 +103,6 @@ export default function LoginPage() {
 
     try {
       await login(usernameOrEmail, password);
-      // If superadmin logged in, redirect directly to super-admin portal
       if (
         usernameOrEmail.toLowerCase().includes('anoopsue') ||
         usernameOrEmail.toLowerCase().includes('superadmin')
@@ -145,119 +119,57 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-between bg-[#071322] text-slate-100 relative overflow-hidden select-none">
+    <div className="min-h-screen flex flex-col justify-between bg-[#071322] text-slate-100 relative overflow-x-hidden select-none">
       {/* Background ambient lighting matching Hermes Navy & Gold palette */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-gradient-to-b from-amber-500/10 via-blue-900/15 to-transparent blur-3xl pointer-events-none -z-0" />
-      <div className="absolute -bottom-24 -right-24 w-[600px] h-[600px] bg-blue-950/25 blur-3xl pointer-events-none -z-0" />
-      <div className="absolute -top-24 -left-24 w-[500px] h-[500px] bg-amber-600/5 blur-3xl pointer-events-none -z-0" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] max-w-full h-[500px] bg-gradient-to-b from-amber-500/10 via-blue-900/15 to-transparent blur-3xl pointer-events-none -z-0" />
+      <div className="absolute -bottom-24 -right-24 w-[600px] max-w-full h-[600px] bg-blue-950/25 blur-3xl pointer-events-none -z-0" />
+      <div className="absolute -top-24 -left-24 w-[500px] max-w-full h-[500px] bg-amber-600/5 blur-3xl pointer-events-none -z-0" />
 
-      {/* FULL-SCREEN STARTUP INTRO VIDEO (WITH SOUND) */}
+      {/* PURE ADAPTIVE FULL-SCREEN STARTUP INTRO VIDEO (NO CONTROLS, NO BUTTONS, NO BARS) */}
       {showVideo && (
         <div
-          className="fixed inset-0 z-50 w-screen h-screen bg-black flex items-center justify-center overflow-hidden animate-fade-in"
-          onClick={() => {
-            if (needsUserClickForSound) {
-              handleUnmuteSound();
-            }
-          }}
+          className="fixed inset-0 z-50 w-full h-full bg-black overflow-hidden flex items-center justify-center cursor-pointer select-none"
+          onClick={handleVideoClose}
         >
-          {/* Video Player (Full Screen Coverage) */}
+          {/* Full-screen video scaled with object-cover to seamlessly fill 100% of any screen */}
           <video
             ref={videoRef}
             src={`${basePath}/intro.mp4`}
             autoPlay
             playsInline
-            controls
             onEnded={handleVideoClose}
-            className="w-full h-full object-contain bg-black cursor-pointer"
+            className="w-full h-full object-cover bg-black"
           />
-
-          {/* Floating Top Controls */}
-          <div className="absolute top-6 right-6 z-20 flex items-center space-x-3">
-            {/* Audio Toggle Button */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (videoRef.current) {
-                  const nextMuted = !videoRef.current.muted;
-                  videoRef.current.muted = nextMuted;
-                  setIsMuted(nextMuted);
-                  setNeedsUserClickForSound(false);
-                }
-              }}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-black/60 hover:bg-black/90 text-amber-300 border border-amber-500/40 backdrop-blur-md text-xs font-semibold shadow-lg transition"
-            >
-              {isMuted ? (
-                <>
-                  <VolumeX className="w-4 h-4 text-red-400" />
-                  <span>Unmute Sound</span>
-                </>
-              ) : (
-                <>
-                  <Volume2 className="w-4 h-4 text-emerald-400" />
-                  <span>Sound On</span>
-                </>
-              )}
-            </button>
-
-            {/* Skip Intro Button */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleVideoClose();
-              }}
-              className="flex items-center space-x-1.5 px-4 py-1.5 rounded-full bg-amber-500/90 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-xl transition transform active:scale-95"
-            >
-              <span>Skip Intro</span>
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Floating Tap-to-Unmute Banner if Browser Restricted Autoplay Sound */}
-          {needsUserClickForSound && (
-            <div
-              className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 flex items-center space-x-2 px-5 py-2.5 rounded-full bg-amber-500/95 text-slate-950 font-bold text-xs shadow-2xl animate-bounce cursor-pointer border border-white/30"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleUnmuteSound();
-              }}
-            >
-              <Volume2 className="w-4 h-4" />
-              <span>Tap Anywhere to Enable Full Sound 🔊</span>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Main Login Card Section (Top bar completely removed) */}
-      <main className="relative z-10 flex-1 flex flex-col justify-center items-center px-4 sm:px-6 py-12">
-        <div className="w-full max-w-md">
+      {/* Main Login Card Section - Fully Mobile Responsive */}
+      <main className="relative z-10 flex-1 flex flex-col justify-center items-center px-4 sm:px-6 py-8 sm:py-12 w-full">
+        <div className="w-full max-w-sm sm:max-w-md mx-auto">
           {/* Logo & Brand Header */}
-          <div className="text-center mb-6">
-            <div className="inline-block p-2.5 rounded-2xl bg-white shadow-2xl shadow-amber-500/10 border-2 border-amber-500/30 mb-3 hover:scale-105 transition-transform duration-300">
+          <div className="text-center mb-5 sm:mb-6">
+            <div className="inline-block p-2 sm:p-2.5 rounded-2xl bg-white shadow-2xl shadow-amber-500/10 border-2 border-amber-500/30 mb-2.5 sm:mb-3 hover:scale-105 transition-transform duration-300">
               <img
                 src={`${basePath}/hermes-logo.jpg`}
                 alt="Hermes Logo"
-                className="w-20 h-20 object-contain"
+                className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
               />
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
               Hermes <span className="text-amber-400">ERP</span>
             </h1>
-            <p className="mt-1 text-xs text-slate-400 tracking-wide font-normal">
+            <p className="mt-1 text-[11px] sm:text-xs text-slate-400 tracking-wide font-normal px-2">
               Enterprise Distribution, GST Accounting
             </p>
           </div>
 
           {/* Form Card */}
-          <div className="bg-[#0b1c31]/90 backdrop-blur-xl py-8 px-6 sm:px-8 shadow-2xl rounded-2xl border border-amber-500/20 shadow-black/80">
+          <div className="bg-[#0b1c31]/90 backdrop-blur-xl py-6 px-5 sm:py-8 sm:px-8 shadow-2xl rounded-2xl border border-amber-500/20 shadow-black/80">
             {/* Admin Portal Mode Indicator Banner */}
             {isAdminMode && (
               <div className="mb-4 p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <ShieldAlert className="w-4 h-4 text-amber-400" />
+                  <ShieldAlert className="w-4 h-4 text-amber-400 flex-shrink-0" />
                   <span className="font-semibold">Platform Admin Portal Mode</span>
                 </div>
                 <button
@@ -266,7 +178,7 @@ export default function LoginPage() {
                     setIsAdminMode(false);
                     setUsernameOrEmail('');
                   }}
-                  className="text-amber-400 hover:text-white"
+                  className="text-amber-400 hover:text-white ml-2"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -349,7 +261,7 @@ export default function LoginPage() {
             </form>
 
             {/* Quick Actions & Navigation Links */}
-            <div className="mt-6 pt-5 border-t border-slate-800/80 space-y-3 text-xs text-center">
+            <div className="mt-5 sm:mt-6 pt-4 sm:pt-5 border-t border-slate-800/80 space-y-3 text-xs text-center">
               <div>
                 <span className="text-slate-400">New Distribution Firm? </span>
                 <Link
@@ -360,8 +272,8 @@ export default function LoginPage() {
                 </Link>
               </div>
 
-              {/* Admin Portal Button only (matching user screenshot) */}
-              <div className="pt-2">
+              {/* Admin Portal Button */}
+              <div className="pt-1.5">
                 <button
                   type="button"
                   onClick={handleAdminPortalClick}
@@ -388,9 +300,9 @@ export default function LoginPage() {
         </div>
       </main>
 
-      {/* Corporate Three-Part Footer */}
-      <footer className="relative z-10 w-full py-3.5 px-6 border-t border-slate-800/80 bg-[#050e18]/90 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-2 sm:gap-0">
+      {/* Corporate Three-Part Footer - Fully Mobile Responsive */}
+      <footer className="relative z-10 w-full py-3 sm:py-3.5 px-4 sm:px-6 border-t border-slate-800/80 bg-[#050e18]/90 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between text-[11px] sm:text-xs text-slate-400 gap-2 sm:gap-0 text-center sm:text-left">
           {/* Left Bottom: Version */}
           <div className="flex items-center space-x-2">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -398,7 +310,7 @@ export default function LoginPage() {
           </div>
 
           {/* Central Bottom: Copyright & Author */}
-          <div className="text-center font-medium text-slate-300">
+          <div className="font-medium text-slate-300">
             © {new Date().getFullYear()} • Powered by <span className="text-amber-400 font-semibold">@anoopsue</span>
           </div>
 

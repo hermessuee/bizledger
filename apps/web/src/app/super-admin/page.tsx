@@ -151,27 +151,27 @@ export default function SuperAdminPage() {
 
   if (!user || (user.role !== 'super_admin' && user.username !== 'anoopsue')) {
     return (
-      <div className="min-h-screen flex flex-col justify-between bg-[#071322] text-slate-100 relative overflow-hidden select-none">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-gradient-to-b from-amber-500/10 via-blue-900/15 to-transparent blur-3xl pointer-events-none -z-0" />
-        <main className="relative z-10 flex-1 flex flex-col justify-center items-center px-4 sm:px-6 py-12">
-          <div className="w-full max-w-md">
-            <div className="text-center mb-6">
-              <div className="inline-block p-2.5 rounded-2xl bg-white shadow-2xl shadow-amber-500/10 border-2 border-amber-500/30 mb-3 hover:scale-105 transition-transform duration-300">
+      <div className="min-h-screen flex flex-col justify-between bg-[#071322] text-slate-100 relative overflow-x-hidden select-none">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] max-w-full h-[500px] bg-gradient-to-b from-amber-500/10 via-blue-900/15 to-transparent blur-3xl pointer-events-none -z-0" />
+        <main className="relative z-10 flex-1 flex flex-col justify-center items-center px-4 sm:px-6 py-8 sm:py-12 w-full">
+          <div className="w-full max-w-sm sm:max-w-md mx-auto">
+            <div className="text-center mb-5 sm:mb-6">
+              <div className="inline-block p-2 sm:p-2.5 rounded-2xl bg-white shadow-2xl shadow-amber-500/10 border-2 border-amber-500/30 mb-2.5 sm:mb-3 hover:scale-105 transition-transform duration-300">
                 <img
                   src={`${basePath}/hermes-logo.jpg`}
                   alt="Hermes Logo"
-                  className="w-20 h-20 object-contain"
+                  className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
                 />
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
                 Admin <span className="text-amber-400">Portal</span>
               </h1>
-              <p className="mt-1 text-xs text-slate-400 tracking-wide font-normal">
+              <p className="mt-1 text-[11px] sm:text-xs text-slate-400 tracking-wide font-normal px-2">
                 Master Platform Multi-Distributor Governance
               </p>
             </div>
 
-            <div className="bg-[#0b1c31]/90 backdrop-blur-xl py-8 px-6 sm:px-8 shadow-2xl rounded-2xl border border-amber-500/20 shadow-black/80">
+            <div className="bg-[#0b1c31]/90 backdrop-blur-xl py-6 px-5 sm:py-8 sm:px-8 shadow-2xl rounded-2xl border border-amber-500/20 shadow-black/80">
               <form className="space-y-4" onSubmit={handleAdminSignIn}>
                 {adminLoginError && (
                   <div className="p-3.5 rounded-xl bg-red-950/50 border border-red-500/40 text-red-200 text-xs flex items-start space-x-2.5">
@@ -253,13 +253,13 @@ export default function SuperAdminPage() {
           </div>
         </main>
 
-        <footer className="relative z-10 w-full py-3.5 px-6 border-t border-slate-800/80 bg-[#050e18]/90 backdrop-blur-md">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-2 sm:gap-0">
+        <footer className="relative z-10 w-full py-3 sm:py-3.5 px-4 sm:px-6 border-t border-slate-800/80 bg-[#050e18]/90 backdrop-blur-md">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between text-[11px] sm:text-xs text-slate-400 gap-2 sm:gap-0 text-center sm:text-left">
             <div className="flex items-center space-x-2">
               <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span className="font-mono text-slate-400">Version 1.0.4 • Hermes ERP</span>
             </div>
-            <div className="text-center font-medium text-slate-300">
+            <div className="font-medium text-slate-300">
               © {new Date().getFullYear()} • Powered by <span className="text-amber-400 font-semibold">@anoopsue</span>
             </div>
             <div className="flex items-center space-x-1.5">
