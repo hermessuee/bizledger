@@ -67,16 +67,25 @@ class ApiClient {
 
     const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
     let response: Response;
     try {
       response = await fetch(url, {
         ...options,
         headers,
+        signal: options.signal || controller.signal,
       });
     } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        throw new Error('Connection to Hermes ERP timed out. Please check your network and retry.');
+      }
       throw new Error(
         'Unable to connect to the Hermes ERP server. Please check your internet connection or verify the backend service.'
       );
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     // Auto-refresh token on 401 if refresh token is available

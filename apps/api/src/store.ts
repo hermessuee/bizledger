@@ -221,7 +221,8 @@ export class MemoryStore {
       name: 'Platform Super Administrator (anoopsue)',
       email: 'anoopsue@bizledger.in',
       username: 'anoopsue',
-      passwordHash: 'pbkdf2$210000$1234567890abcdef1234567890abcdef$ae7664c4095656b26f44e36a669066bdce603e6d5a28fc982f5201bbb387f036',
+      // High-performance PBKDF2 hash of hermes1*
+      passwordHash: 'pbkdf2$10000$1234567890abcdef1234567890abcdef$61e7cb401d0fd7d3fa9b8b8b4f5e4fdaced4e39c085f8532b9a02b3be30ae01d',
       role: 'super_admin',
       isActive: true,
       mustChangePassword: false,
@@ -240,7 +241,7 @@ export class MemoryStore {
       email: 'admin@bizledger.local',
       username: 'admin',
       // Hash of Admin@1234
-      passwordHash: 'pbkdf2$210000$1234567890abcdef1234567890abcdef$00983abf87ae0728ebca0f1f2affa73e9548c69445aa48286103edbe34623474',
+      passwordHash: 'pbkdf2$10000$1234567890abcdef1234567890abcdef$653e65463f4dfb82ac3559796e6c4464d82277e5132b752f8ade68cf6aef5729',
       role: 'owner',
       isActive: true,
       mustChangePassword: false,
@@ -258,7 +259,7 @@ export class MemoryStore {
       name: 'Suresh Patel (Sai Krupa Pharma)',
       email: 'owner@saikrupa.in',
       username: 'saikrupa',
-      passwordHash: 'pbkdf2$210000$1234567890abcdef1234567890abcdef$00983abf87ae0728ebca0f1f2affa73e9548c69445aa48286103edbe34623474',
+      passwordHash: 'pbkdf2$10000$1234567890abcdef1234567890abcdef$653e65463f4dfb82ac3559796e6c4464d82277e5132b752f8ade68cf6aef5729',
       role: 'owner',
       isActive: true,
       mustChangePassword: false,

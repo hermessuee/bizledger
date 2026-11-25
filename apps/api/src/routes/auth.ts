@@ -33,7 +33,7 @@ auth.post('/login', async (c) => {
 
   // Timing safe dummy hash comparison if user doesn't exist
   if (!user) {
-    await verifyPassword(password, 'pbkdf2$210000$1234567890abcdef1234567890abcdef$8d8d3f669aebf3f8dc84b901b08491c1b18ce426b1fca82d6da05fec24479c32');
+    await verifyPassword(password, 'pbkdf2$10000$1234567890abcdef1234567890abcdef$8d8d3f669aebf3f8dc84b901b08491c1b18ce426b1fca82d6da05fec24479c32');
     return c.json({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid username/email or password' } }, 401);
   }
 
@@ -88,7 +88,7 @@ auth.post('/login', async (c) => {
 
   // Create Refresh Token
   const refreshToken = generateRandomHex(32);
-  const tokenHash = await hashPassword(refreshToken, 10000);
+  const tokenHash = await hashPassword(refreshToken, 2000);
   memoryStore.refreshTokens.push({
     id: crypto.randomUUID(),
     userId: user.id,

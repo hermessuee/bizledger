@@ -138,7 +138,11 @@ export default function SuperAdminPage() {
       (b.gstin && b.gstin.toLowerCase().includes(search.toLowerCase()))
   );
 
-  if (authLoading) {
+  // Instant render: only show loading spinner if a token exists and auth is actively resolving
+  const token = typeof window !== 'undefined' ? localStorage.getItem('bizledger_access_token') : null;
+  const showLoading = authLoading && Boolean(token);
+
+  if (showLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#071322] text-white">
         <div className="flex flex-col items-center space-y-3">

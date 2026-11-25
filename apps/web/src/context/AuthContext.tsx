@@ -17,23 +17,65 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserSession | null>(null);
-  const [business, setBusiness] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Synchronously initialize from localStorage cache for instant 0ms render
+  const [user, setUser] = useState<UserSession | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('hermes_user_session');
+        return cached ? JSON.parse(cached) : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+
+  const [business, setBusiness] = useState<any | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('hermes_business_session');
+        return cached ? JSON.parse(cached) : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+
+  // Only consider loading true if we have a token but NO cached user in memory
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('bizledger_access_token');
+      const cached = localStorage.getItem('hermes_user_session');
+      return Boolean(token && !cached);
+    }
+    return false;
+  });
 
   const fetchSession = async () => {
     try {
       const token = api.getToken();
       if (!token) {
         setLoading(false);
+        setUser(null);
+        setBusiness(null);
         return;
       }
       const data = await api.get('/api/v1/auth/me');
       setUser(data.user);
       setBusiness(data.business);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('hermes_user_session', JSON.stringify(data.user));
+        localStorage.setItem('hermes_business_session', JSON.stringify(data.business));
+      }
     } catch (err) {
       api.setToken(null);
       setUser(null);
+      setBusiness(null);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('hermes_user_session');
+        localStorage.removeItem('hermes_business_session');
+      }
     } finally {
       setLoading(false);
     }
@@ -44,15 +86,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (usernameOrEmail: string, password: string) => {
+    // Single round-trip login: backend returns user + business together
     const data = await api.post('/api/v1/auth/login', { usernameOrEmail, password });
     api.setToken(data.accessToken);
     if (typeof window !== 'undefined') {
       localStorage.setItem('bizledger_refresh_token', data.refreshToken);
+      localStorage.setItem('hermes_user_session', JSON.stringify(data.user));
+      localStorage.setItem('hermes_business_session', JSON.stringify(data.business));
     }
     setUser(data.user);
-    // Fetch business info
-    const me = await api.get('/api/v1/auth/me');
-    setBusiness(me.business);
+    setBusiness(data.business);
+    setLoading(false);
   };
 
   const logout = async () => {
@@ -63,6 +107,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     api.setToken(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem('bizledger_refresh_token');
+      localStorage.removeItem('hermes_user_session');
+      localStorage.removeItem('hermes_business_session');
       sessionStorage.removeItem('bizledger_alerts_shown_session');
     }
     setUser(null);

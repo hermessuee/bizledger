@@ -3,7 +3,7 @@
  * Produces hashes in format: pbkdf2$iterations$salt_hex$hash_hex
  */
 
-const DEFAULT_ITERATIONS = 210000;
+const DEFAULT_ITERATIONS = 10000;
 const KEY_LEN = 32; // 256 bits
 
 export async function hashPassword(

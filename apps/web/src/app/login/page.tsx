@@ -39,6 +39,12 @@ export default function LoginPage() {
       setShowVideo(false);
     }
     setIsIntroDetermined(true);
+
+    // Pre-warm backend API while intro video plays to eliminate cold-start delay
+    fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || 'https://br-purple-night-bep8owab-api.compute.c-9.us-east-2.aws.neon.tech'}/api/health`,
+      { cache: 'no-store', mode: 'cors' }
+    ).catch(() => {});
   }, []);
 
   // Play pure full-screen video with sound on mount
