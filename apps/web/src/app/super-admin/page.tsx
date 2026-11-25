@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/AppShell';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -31,11 +32,13 @@ interface DistributorWithStats extends Business {
 }
 
 export default function SuperAdminPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const [businesses, setBusinesses] = useState<DistributorWithStats[]>([]);
   const [availableMenus, setAvailableMenus] = useState<MenuKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   // Selected business for Module Management Modal
   const [selectedBusiness, setSelectedBusiness] = useState<DistributorWithStats | null>(null);
@@ -45,19 +48,30 @@ export default function SuperAdminPage() {
   const fetchDistributors = async () => {
     try {
       setLoading(true);
+      setError(null);
       const res = await api.get('/api/v1/admin/businesses');
       setBusinesses(res.businesses || []);
       setAvailableMenus(res.availableMenus || []);
     } catch (err: any) {
-      alert(err.message || 'Failed to fetch distributors');
+      if (err?.status !== 401 && !err?.message?.includes('Authorization')) {
+        setError(err.message || 'Failed to fetch distributors');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchDistributors();
-  }, []);
+    if (!authLoading) {
+      if (!user) {
+        router.replace('/login');
+      } else if (user.role === 'super_admin' || user.username === 'anoopsue') {
+        fetchDistributors();
+      } else {
+        router.replace('/');
+      }
+    }
+  }, [user, authLoading, router]);
 
   const handleOpenModuleModal = (b: DistributorWithStats) => {
     setSelectedBusiness(b);
@@ -82,7 +96,7 @@ export default function SuperAdminPage() {
       setSelectedBusiness(null);
       fetchDistributors();
     } catch (err: any) {
-      alert(err.message || 'Failed to update modules');
+      setError(err.message || 'Failed to update modules');
     } finally {
       setSavingModules(false);
     }
@@ -93,7 +107,7 @@ export default function SuperAdminPage() {
       await api.put(`/api/v1/admin/businesses/${businessId}/status`, { status });
       fetchDistributors();
     } catch (err: any) {
-      alert(err.message || 'Failed to update distributor status');
+      setError(err.message || 'Failed to update distributor status');
     }
   };
 
@@ -107,6 +121,15 @@ export default function SuperAdminPage() {
     <AppShell currentMenu="admin_portal">
       <div className="p-6 max-w-7xl mx-auto space-y-6">
         {/* Header */}
+        {error && (
+          <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center justify-between">
+            <span>{error}</span>
+            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <div className="flex items-center space-x-2.5">
