@@ -29,9 +29,15 @@ jobs:
         run: npm run test --workspace=@bizledger/api
 
       - name: Deploy Worker to Cloudflare
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'apps/api'
           command: deploy
+
+      - name: Check Cloudflare credentials
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN == '' }}
+        run: |
+          echo "::notice title=Cloudflare Deployment Skipped::Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to GitHub Secrets (Settings > Secrets and variables > Actions) to enable automated deployment."
