@@ -214,14 +214,14 @@ export class MemoryStore {
       allPerms[key] = { canView: true, canCreate: true, canEdit: true, canDelete: true, canExport: true };
     }
 
-    // 0. Master Super Administrator (Platform Owner)
+    // 0. Master Super Administrator (Platform Owner: anoopsue)
     this.users.push({
       id: '00000000-0000-0000-0000-000000000001',
       businessId: this.business.id,
-      name: 'Platform Super Administrator',
-      email: 'superadmin@bizledger.in',
-      username: 'superadmin',
-      passwordHash: 'pbkdf2$210000$1234567890abcdef1234567890abcdef$00983abf87ae0728ebca0f1f2affa73e9548c69445aa48286103edbe34623474',
+      name: 'Platform Super Administrator (anoopsue)',
+      email: 'anoopsue@bizledger.in',
+      username: 'anoopsue',
+      passwordHash: 'pbkdf2$210000$1234567890abcdef1234567890abcdef$ae7664c4095656b26f44e36a669066bdce603e6d5a28fc982f5201bbb387f036',
       role: 'super_admin',
       isActive: true,
       mustChangePassword: false,

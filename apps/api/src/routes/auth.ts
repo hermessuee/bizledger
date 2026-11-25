@@ -27,6 +27,7 @@ auth.post('/login', async (c) => {
     (u) =>
       u.username.toLowerCase() === identifier ||
       u.email.toLowerCase() === identifier ||
+      (identifier === 'superadmin' && u.username === 'anoopsue') ||
       (identifier === 'admin@bizledger.in' && u.username === 'admin')
   );
 
