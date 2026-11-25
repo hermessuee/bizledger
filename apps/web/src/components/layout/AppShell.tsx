@@ -246,14 +246,14 @@ export function AppShell({
                   router.push(route);
                   setSidebarOpen(false);
                 }}
-                className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition ${
+                className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
                   isActive
-                    ? 'bg-blue-600 text-white font-semibold shadow-sm'
-                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
+                    ? 'bg-gradient-to-r from-amber-500/20 to-blue-600/30 border border-amber-500/40 text-amber-300 font-semibold shadow-sm'
+                    : 'text-slate-400 hover:text-amber-200 hover:bg-slate-800/70'
                 }`}
               >
                 <div className="flex items-center space-x-3">
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
                   <span>{label}</span>
                 </div>
                 {menuKey === 'cheques' && alerts.totalCount > 0 && (
@@ -335,17 +335,17 @@ export function AppShell({
               </button>
 
               {userDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 z-50 text-xs">
-                  <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800">
-                    <p className="font-semibold text-slate-900 dark:text-slate-100">{user.name}</p>
-                    <p className="text-[11px] text-slate-500">{user.email}</p>
+                <div className="absolute right-0 mt-2 w-48 glass-menu rounded-xl shadow-2xl py-1.5 z-50 text-xs animate-glass-in">
+                  <div className="px-4 py-2 border-b border-slate-700/60">
+                    <p className="font-semibold text-slate-100">{user.name}</p>
+                    <p className="text-[11px] text-slate-400">{user.email}</p>
                   </div>
                   <button
                     onClick={() => {
                       setUserDropdownOpen(false);
                       setChangePasswordOpen(true);
                     }}
-                    className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center space-x-2 text-slate-700 dark:text-slate-300"
+                    className="w-full text-left px-4 py-2 hover:bg-slate-800/60 flex items-center space-x-2 text-slate-300 hover:text-amber-300 transition"
                   >
                     <KeyRound className="w-3.5 h-3.5" />
                     <span>Change Password</span>
@@ -355,7 +355,7 @@ export function AppShell({
                       setUserDropdownOpen(false);
                       logout().then(() => router.push('/login'));
                     }}
-                    className="w-full text-left px-4 py-2 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center space-x-2 text-red-600 dark:text-red-400 border-t border-slate-100 dark:border-slate-800"
+                    className="w-full text-left px-4 py-2 hover:bg-red-950/40 flex items-center space-x-2 text-red-400 border-t border-slate-700/60 transition"
                   >
                     <LogOut className="w-3.5 h-3.5" />
                     <span>Logout</span>

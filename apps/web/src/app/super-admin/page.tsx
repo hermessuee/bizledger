@@ -171,10 +171,10 @@ export default function SuperAdminPage() {
               </p>
             </div>
 
-            <div className="bg-[#0b1c31]/90 backdrop-blur-xl py-6 px-5 sm:py-8 sm:px-8 shadow-2xl rounded-2xl border border-amber-500/20 shadow-black/80">
+            <div className="glass-card py-6 px-5 sm:py-8 sm:px-8 rounded-2xl animate-glass-in">
               <form className="space-y-4" onSubmit={handleAdminSignIn}>
                 {adminLoginError && (
-                  <div className="p-3.5 rounded-xl bg-red-950/50 border border-red-500/40 text-red-200 text-xs flex items-start space-x-2.5">
+                  <div className="p-3.5 rounded-xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs flex items-start space-x-2.5 animate-glass-in">
                     <span className="font-medium">{adminLoginError}</span>
                   </div>
                 )}
@@ -194,7 +194,7 @@ export default function SuperAdminPage() {
                       value={adminUsername}
                       onChange={(e) => setAdminUsername(e.target.value)}
                       placeholder=""
-                      className="block w-full pl-10 pr-3 py-2.5 bg-[#06101d] border border-slate-700/80 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
+                      className="block w-full pl-10 pr-3 py-2.5 glass-input rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
                     />
                   </div>
                 </div>
@@ -213,7 +213,7 @@ export default function SuperAdminPage() {
                       value={adminPassword}
                       onChange={(e) => setAdminPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="block w-full pl-10 pr-10 py-2.5 bg-[#06101d] border border-slate-700/80 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
+                      className="block w-full pl-10 pr-10 py-2.5 glass-input rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
                     />
                     <button
                       type="button"
@@ -228,7 +228,7 @@ export default function SuperAdminPage() {
                 <button
                   type="submit"
                   disabled={adminLoggingIn}
-                  className="w-full mt-2 flex justify-center items-center py-2.5 px-4 rounded-lg shadow-lg shadow-amber-500/15 text-sm font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:via-yellow-300 hover:to-amber-400 transition transform active:scale-[0.99] disabled:opacity-60"
+                  className="w-full mt-2 flex justify-center items-center py-2.5 px-4 rounded-lg shadow-lg shadow-amber-500/20 text-sm font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:via-yellow-300 hover:to-amber-400 transition-all duration-200 transform active:scale-[0.98] disabled:opacity-60"
                 >
                   {adminLoggingIn ? (
                     <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
@@ -323,32 +323,32 @@ export default function SuperAdminPage() {
 
         {/* Stats Row */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <p className="text-xs font-medium text-slate-500">Total Distributors</p>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{businesses.length}</p>
+          <div className="p-4 glass-card rounded-xl shadow-sm">
+            <p className="text-xs font-medium text-slate-400">Total Distributors</p>
+            <p className="text-2xl font-bold text-white mt-1">{businesses.length}</p>
           </div>
-          <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <p className="text-xs font-medium text-slate-500">Active Businesses</p>
-            <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+          <div className="p-4 glass-card rounded-xl shadow-sm">
+            <p className="text-xs font-medium text-slate-400">Active Businesses</p>
+            <p className="text-2xl font-bold text-emerald-400 mt-1">
               {businesses.filter((b) => b.status === 'active' || !b.status).length}
             </p>
           </div>
-          <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <p className="text-xs font-medium text-slate-500">Total Distributor Users</p>
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">
+          <div className="p-4 glass-card rounded-xl shadow-sm">
+            <p className="text-xs font-medium text-slate-400">Total Distributor Users</p>
+            <p className="text-2xl font-bold text-blue-400 mt-1">
               {businesses.reduce((sum, b) => sum + (b.stats?.users || 0), 0)}
             </p>
           </div>
-          <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <p className="text-xs font-medium text-slate-500">Platform Invoices Generated</p>
-            <p className="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1">
+          <div className="p-4 glass-card rounded-xl shadow-sm">
+            <p className="text-xs font-medium text-slate-400">Platform Invoices Generated</p>
+            <p className="text-2xl font-bold text-amber-400 mt-1">
               {businesses.reduce((sum, b) => sum + (b.stats?.invoices || 0), 0)}
             </p>
           </div>
         </div>
 
         {/* Distributor Table */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+        <div className="glass-card rounded-xl overflow-hidden shadow-sm">
           <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Registered Distributor Businesses</h2>
             <span className="text-xs text-slate-500">{filteredBusinesses.length} firm(s)</span>

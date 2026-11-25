@@ -2,8 +2,16 @@ import { UserSession } from '@bizledger/shared';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://br-purple-night-bep8owab-api.compute.c-9.us-east-2.aws.neon.tech';
 
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
+
 class ApiClient {
   private accessToken: string | null = null;
+  // High-performance client-side response cache (TTL in milliseconds)
+  private cache = new Map<string, CacheEntry>();
+  private defaultCacheTtl = 8000; // 8 seconds TTL for ultra-fast instant menu/page transitions
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -13,6 +21,7 @@ class ApiClient {
 
   setToken(token: string | null) {
     this.accessToken = token;
+    this.clearCache(); // clear cache on user change/logout
     if (typeof window !== 'undefined') {
       if (token) localStorage.setItem('bizledger_access_token', token);
       else localStorage.removeItem('bizledger_access_token');
@@ -26,7 +35,26 @@ class ApiClient {
     return this.accessToken;
   }
 
-  async request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  clearCache() {
+    this.cache.clear();
+  }
+
+  async request<T = any>(
+    endpoint: string,
+    options: RequestInit = {},
+    bypassCache = false
+  ): Promise<T> {
+    const method = options.method || 'GET';
+    const cacheKey = `${method}:${endpoint}`;
+
+    // 1. Fast Cache Read for GET requests (Instant 0ms UI load)
+    if (method === 'GET' && !bypassCache) {
+      const cached = this.cache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < this.defaultCacheTtl) {
+        return cached.data as T;
+      }
+    }
+
     const token = this.getToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -46,9 +74,8 @@ class ApiClient {
         headers,
       });
     } catch (err: any) {
-      // Friendly fallback message if server is sleeping or unavailable
       throw new Error(
-        'Unable to connect to the BizLedger server. Please check your internet connection or verify the backend service.'
+        'Unable to connect to the Hermes ERP server. Please check your internet connection or verify the backend service.'
       );
     }
 
@@ -66,7 +93,12 @@ class ApiClient {
             const data = await refreshRes.json();
             this.setToken(data.accessToken);
             headers['Authorization'] = `Bearer ${data.accessToken}`;
-            return (await fetch(url, { ...options, headers })).json();
+            const retryRes = await fetch(url, { ...options, headers });
+            const retryData = await retryRes.json();
+            if (method === 'GET') {
+              this.cache.set(cacheKey, { data: retryData, timestamp: Date.now() });
+            }
+            return retryData;
           }
         } catch {}
       }
@@ -82,12 +114,20 @@ class ApiClient {
       throw error;
     }
 
+    // 2. Cache successful GET responses for instant reuse
+    if (method === 'GET') {
+      this.cache.set(cacheKey, { data, timestamp: Date.now() });
+    } else {
+      // 3. Clear cache on mutations (POST, PUT, DELETE) so modified data is instantly fresh
+      this.clearCache();
+    }
+
     return data;
   }
 
   // Convenience methods
-  get<T = any>(endpoint: string) {
-    return this.request<T>(endpoint, { method: 'GET' });
+  get<T = any>(endpoint: string, bypassCache = false) {
+    return this.request<T>(endpoint, { method: 'GET' }, bypassCache);
   }
 
   post<T = any>(endpoint: string, body?: any) {
