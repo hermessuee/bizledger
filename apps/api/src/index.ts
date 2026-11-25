@@ -11,6 +11,8 @@ import { chequeRoutes } from './routes/cheques';
 import { reportRoutes } from './routes/reports';
 import { dashboardRoutes } from './routes/dashboard';
 import { settingsRoute, auditRoute, backupRoute } from './routes/settings';
+import { adminRoutes } from './routes/admin';
+import { importRoutes } from './routes/imports';
 import { memoryStore } from './store';
 import { formatPaise } from '@bizledger/shared';
 
@@ -80,6 +82,8 @@ app.route('/api/v1/dashboard', dashboardRoutes);
 app.route('/api/v1/settings', settingsRoute);
 app.route('/api/v1/audit-log', auditRoute);
 app.route('/api/v1/backup', backupRoute);
+app.route('/api/v1/admin', adminRoutes);
+app.route('/api/v1/imports', importRoutes);
 
 export { app };
 

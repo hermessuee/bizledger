@@ -8,6 +8,8 @@ export interface Business {
   address?: string | null;
   currency: string;
   fyStartMonth: number;
+  status?: 'active' | 'suspended' | 'trial';
+  enabledMenus?: MenuKey[];
   settings: Record<string, any>;
   createdAt: string;
 }

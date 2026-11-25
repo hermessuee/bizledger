@@ -1,4 +1,5 @@
 import {
+  Business,
   UserSession,
   Role,
   MenuKey,
@@ -15,29 +16,68 @@ import { hashPassword, verifyPassword, generateRandomHex } from './crypto';
 
 // In-memory persistent data store for local dev, testing, and fallback
 export class MemoryStore {
-  business = {
-    id: '11111111-1111-1111-1111-111111111111',
-    name: 'Apex Trading & Services Pvt Ltd',
-    gstin: '27AAPCA1234M1Z5',
-    stateCode: '27',
-    address: 'Shop 14, Commercial Complex, Andheri East, Mumbai, Maharashtra 400069',
-    currency: 'INR',
-    fyStartMonth: 4,
-    settings: {
-      alertDaysBefore: [7, 3, 1, 0],
-      alertReceived: true,
-      alertIssued: true,
-      invoicePrefix: 'INV',
-      fyFormat: 'YYYY-YY',
-      bankDetails: {
-        bankName: 'HDFC Bank',
-        accountNo: '50200012345678',
-        ifsc: 'HDFC0000123',
-        branch: 'Andheri East, Mumbai',
+  businesses: Business[] = [
+    {
+      id: '11111111-1111-1111-1111-111111111111',
+      name: 'Apex Trading & Services Pvt Ltd',
+      gstin: '27AAPCA1234M1Z5',
+      stateCode: '27',
+      address: 'Shop 14, Commercial Complex, Andheri East, Mumbai, Maharashtra 400069',
+      currency: 'INR',
+      fyStartMonth: 4,
+      status: 'active',
+      enabledMenus: [...MENU_KEYS],
+      settings: {
+        alertDaysBefore: [7, 3, 1, 0],
+        alertReceived: true,
+        alertIssued: true,
+        invoicePrefix: 'INV',
+        fyFormat: 'YYYY-YY',
+        bankDetails: {
+          bankName: 'HDFC Bank',
+          accountNo: '50200012345678',
+          ifsc: 'HDFC0000123',
+          branch: 'Andheri East, Mumbai',
+        },
       },
+      createdAt: new Date().toISOString(),
     },
-    createdAt: new Date().toISOString(),
-  };
+    {
+      id: '11111111-1111-1111-1111-111111111112',
+      name: 'Sai Krupa Pharma Distributors',
+      gstin: '24ABCDE5678F1Z2',
+      stateCode: '24',
+      address: 'Plot 88, GIDC Industrial Estate, Ahmedabad, Gujarat 380015',
+      currency: 'INR',
+      fyStartMonth: 4,
+      status: 'active',
+      enabledMenus: [
+        'dashboard',
+        'customers',
+        'vendors',
+        'items',
+        'sales_invoices',
+        'purchase_bills',
+        'payments',
+        'receipts',
+        'cheques',
+        'gst',
+        'bulk_upload',
+        'settings',
+        'users',
+      ],
+      settings: {
+        invoicePrefix: 'SKP',
+        alertReceived: true,
+        alertIssued: true,
+      },
+      createdAt: new Date().toISOString(),
+    },
+  ];
+
+  get business() {
+    return this.businesses[0];
+  }
 
   users: Array<{
     id: string;
@@ -169,12 +209,30 @@ export class MemoryStore {
   }
 
   seed() {
-    // 1. Admin user (Password: Admin@1234)
     const allPerms: any = {};
     for (const key of MENU_KEYS) {
       allPerms[key] = { canView: true, canCreate: true, canEdit: true, canDelete: true, canExport: true };
     }
 
+    // 0. Master Super Administrator (Platform Owner)
+    this.users.push({
+      id: '00000000-0000-0000-0000-000000000001',
+      businessId: this.business.id,
+      name: 'Platform Super Administrator',
+      email: 'superadmin@bizledger.in',
+      username: 'superadmin',
+      passwordHash: 'pbkdf2$210000$1234567890abcdef1234567890abcdef$00983abf87ae0728ebca0f1f2affa73e9548c69445aa48286103edbe34623474',
+      role: 'super_admin',
+      isActive: true,
+      mustChangePassword: false,
+      failedAttempts: 0,
+      lockedUntil: null,
+      lastLoginAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      permissions: allPerms,
+    });
+
+    // 1. Distributor 1 Admin user (Password: Admin@1234)
     this.users.push({
       id: '22222222-2222-2222-2222-222222222222',
       businessId: this.business.id,
@@ -192,6 +250,26 @@ export class MemoryStore {
       createdAt: new Date().toISOString(),
       permissions: allPerms,
     });
+
+    // 2. Distributor 2 Admin user (Password: Admin@1234)
+    this.users.push({
+      id: '22222222-2222-2222-2222-222222222223',
+      businessId: '11111111-1111-1111-1111-111111111112',
+      name: 'Suresh Patel (Sai Krupa Pharma)',
+      email: 'owner@saikrupa.in',
+      username: 'saikrupa',
+      passwordHash: 'pbkdf2$210000$1234567890abcdef1234567890abcdef$00983abf87ae0728ebca0f1f2affa73e9548c69445aa48286103edbe34623474',
+      role: 'owner',
+      isActive: true,
+      mustChangePassword: false,
+      failedAttempts: 0,
+      lockedUntil: null,
+      lastLoginAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      permissions: allPerms,
+    });
+
+    this.seedDefaultAccountsForBusiness('11111111-1111-1111-1111-111111111112');
 
     // 2. Standard Chart of Accounts
     this.accounts = [
@@ -432,6 +510,107 @@ export class MemoryStore {
 
     this.journalEntries.push(created);
     return created;
+  }
+
+  seedDefaultAccountsForBusiness(businessId: string) {
+    const defaultAccounts: Array<Omit<Account, 'id'>> = [
+      { businessId, code: '1010', name: 'Cash in Hand', type: 'asset', isSystem: true, isActive: true },
+      { businessId, code: '1020', name: 'Primary Bank Current A/c', type: 'asset', isSystem: true, isActive: true },
+      { businessId, code: '1030', name: 'Accounts Receivable (Sundry Debtors)', type: 'asset', isSystem: true, isActive: true },
+      { businessId, code: '1040', name: 'Cheques in Hand (PDC Received)', type: 'asset', isSystem: true, isActive: true },
+      { businessId, code: '1050', name: 'Input CGST', type: 'asset', isSystem: true, isActive: true },
+      { businessId, code: '1051', name: 'Input SGST', type: 'asset', isSystem: true, isActive: true },
+      { businessId, code: '1052', name: 'Input IGST', type: 'asset', isSystem: true, isActive: true },
+      { businessId, code: '1060', name: 'Inventory Asset', type: 'asset', isSystem: true, isActive: true },
+
+      { businessId, code: '2010', name: 'Accounts Payable (Sundry Creditors)', type: 'liability', isSystem: true, isActive: true },
+      { businessId, code: '2020', name: 'Cheques Issued Clearing Account', type: 'liability', isSystem: true, isActive: true },
+      { businessId, code: '2030', name: 'Output CGST', type: 'liability', isSystem: true, isActive: true },
+      { businessId, code: '2031', name: 'Output SGST', type: 'liability', isSystem: true, isActive: true },
+      { businessId, code: '2032', name: 'Output IGST', type: 'liability', isSystem: true, isActive: true },
+      { businessId, code: '2040', name: 'TDS Payable', type: 'liability', isSystem: true, isActive: true },
+
+      { businessId, code: '3010', name: 'Owner Capital', type: 'equity', isSystem: true, isActive: true },
+      { businessId, code: '3020', name: 'Retained Earnings', type: 'equity', isSystem: true, isActive: true },
+
+      { businessId, code: '4010', name: 'Sales Income', type: 'income', isSystem: true, isActive: true },
+      { businessId, code: '4020', name: 'Service Income', type: 'income', isSystem: true, isActive: true },
+      { businessId, code: '4030', name: 'Discount Received', type: 'income', isSystem: false, isActive: true },
+
+      { businessId, code: '5010', name: 'Purchases', type: 'expense', isSystem: true, isActive: true },
+      { businessId, code: '5020', name: 'Rent Expense', type: 'expense', isSystem: false, isActive: true },
+      { businessId, code: '5030', name: 'Salaries & Wages', type: 'expense', isSystem: false, isActive: true },
+      { businessId, code: '5040', name: 'Bank Charges', type: 'expense', isSystem: true, isActive: true },
+      { businessId, code: '5050', name: 'Round Off Expense / Adjustment', type: 'expense', isSystem: true, isActive: true },
+    ];
+
+    for (const acc of defaultAccounts) {
+      this.accounts.push({
+        id: crypto.randomUUID(),
+        ...acc,
+      });
+    }
+  }
+
+  createBusiness(params: {
+    name: string;
+    gstin?: string;
+    stateCode?: string;
+    address?: string;
+    ownerName: string;
+    ownerEmail: string;
+    ownerUsername: string;
+    ownerPasswordHash: string;
+  }) {
+    const businessId = crypto.randomUUID();
+    const newBusiness: Business = {
+      id: businessId,
+      name: params.name,
+      gstin: params.gstin || null,
+      stateCode: params.stateCode || (params.gstin ? params.gstin.slice(0, 2) : '27'),
+      address: params.address || null,
+      currency: 'INR',
+      fyStartMonth: 4,
+      status: 'active',
+      enabledMenus: [...MENU_KEYS].filter((k) => k !== 'admin_portal'),
+      settings: {
+        alertDaysBefore: [7, 3, 1, 0],
+        alertReceived: true,
+        alertIssued: true,
+        invoicePrefix: 'INV',
+        fyFormat: 'YYYY-YY',
+      },
+      createdAt: new Date().toISOString(),
+    };
+    this.businesses.push(newBusiness);
+
+    // Seed default standard Chart of Accounts
+    this.seedDefaultAccountsForBusiness(businessId);
+
+    // Create owner user
+    const ownerPerms: any = {};
+    for (const key of MENU_KEYS) {
+      ownerPerms[key] = { canView: true, canCreate: true, canEdit: true, canDelete: true, canExport: true };
+    }
+    const ownerUser = {
+      id: crypto.randomUUID(),
+      businessId,
+      name: params.ownerName,
+      email: params.ownerEmail,
+      username: params.ownerUsername,
+      passwordHash: params.ownerPasswordHash,
+      role: 'owner' as Role,
+      isActive: true,
+      mustChangePassword: false,
+      failedAttempts: 0,
+      lockedUntil: null,
+      lastLoginAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      permissions: ownerPerms,
+    };
+    this.users.push(ownerUser);
+
+    return { business: newBusiness, user: ownerUser };
   }
 }
 

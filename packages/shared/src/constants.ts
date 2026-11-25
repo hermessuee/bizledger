@@ -1,4 +1,4 @@
-export const ROLES = ['owner', 'accountant', 'staff', 'viewer'] as const;
+export const ROLES = ['super_admin', 'owner', 'accountant', 'staff', 'viewer'] as const;
 export type Role = typeof ROLES[number];
 
 export const MENU_KEYS = [
@@ -16,6 +16,8 @@ export const MENU_KEYS = [
   'chart_of_accounts',
   'reports',
   'gst',
+  'bulk_upload',
+  'admin_portal',
   'settings',
   'users',
   'audit_log',
@@ -37,6 +39,8 @@ export const MENU_LABELS: Record<MenuKey, string> = {
   chart_of_accounts: 'Chart of Accounts',
   reports: 'Reports',
   gst: 'GST Reports',
+  bulk_upload: 'Bulk Upload & Templates',
+  admin_portal: 'Distributor Portal (Super Admin)',
   settings: 'Company Settings',
   users: 'User Management',
   audit_log: 'Audit Log',

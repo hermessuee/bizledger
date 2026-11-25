@@ -37,6 +37,8 @@ import {
   ChevronDown,
   Menu,
   X,
+  UploadCloud,
+  ShieldAlert,
 } from 'lucide-react';
 
 const MENU_ICONS: Record<MenuKey, React.ComponentType<{ className?: string }>> = {
@@ -54,6 +56,8 @@ const MENU_ICONS: Record<MenuKey, React.ComponentType<{ className?: string }>> =
   chart_of_accounts: PieChart,
   reports: BarChart3,
   gst: FileSpreadsheet,
+  bulk_upload: UploadCloud,
+  admin_portal: ShieldAlert,
   settings: Settings,
   users: Shield,
   audit_log: History,
@@ -74,6 +78,8 @@ const MENU_ROUTES: Record<MenuKey, string> = {
   chart_of_accounts: '/chart-of-accounts',
   reports: '/reports',
   gst: '/gst',
+  bulk_upload: '/bulk-upload',
+  admin_portal: '/super-admin',
   settings: '/settings',
   users: '/users',
   audit_log: '/audit-log',
@@ -206,7 +212,21 @@ export function AppShell({
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
           {Object.entries(MENU_LABELS).map(([key, label]) => {
             const menuKey = key as MenuKey;
-            // Filter strictly by user permission
+
+            // 1. Super Admin portal: visible only to super_admin role
+            if (menuKey === 'admin_portal' && user.role !== 'super_admin') return null;
+
+            // 2. Check if this module is enabled for the distributor by Super Admin
+            if (
+              user.role !== 'super_admin' &&
+              business?.enabledMenus &&
+              business.enabledMenus.length > 0 &&
+              !business.enabledMenus.includes(menuKey)
+            ) {
+              return null;
+            }
+
+            // 3. Filter strictly by user permission
             if (!hasPermission(menuKey, 'view')) return null;
 
             const Icon = MENU_ICONS[menuKey];

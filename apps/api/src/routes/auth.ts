@@ -103,13 +103,15 @@ auth.post('/login', async (c) => {
     details: { username: user.username },
   });
 
+  const business = memoryStore.businesses.find((b) => b.id === user.businessId) || memoryStore.business;
+
   return c.json({
     accessToken,
     refreshToken,
     user: {
       id: user.id,
       businessId: user.businessId,
-      businessName: memoryStore.business.name,
+      businessName: business.name,
       name: user.name,
       email: user.email,
       username: user.username,
@@ -118,7 +120,81 @@ auth.post('/login', async (c) => {
       mustChangePassword: user.mustChangePassword,
       permissions: user.permissions,
     },
+    business,
   });
+});
+
+// POST /auth/register - New Distributor Business Onboarding
+auth.post('/register', async (c) => {
+  const body = await c.req.json();
+  const { businessName, gstin, stateCode, address, ownerName, email, username, password } = body;
+
+  if (!businessName || !ownerName || !email || !username || !password) {
+    return c.json({ error: { code: 'VALIDATION_ERROR', message: 'All required fields must be filled' } }, 400);
+  }
+
+  const existing = memoryStore.users.find(
+    (u) =>
+      u.username.toLowerCase() === username.trim().toLowerCase() ||
+      u.email.toLowerCase() === email.trim().toLowerCase()
+  );
+  if (existing) {
+    return c.json({ error: { code: 'DUPLICATE_USER', message: 'Username or Email is already registered' } }, 409);
+  }
+
+  const passwordHash = await hashPassword(password);
+  const { business, user } = memoryStore.createBusiness({
+    name: businessName.trim(),
+    gstin: gstin ? gstin.trim().toUpperCase() : undefined,
+    stateCode: stateCode || (gstin ? gstin.trim().slice(0, 2) : '27'),
+    address: address ? address.trim() : undefined,
+    ownerName: ownerName.trim(),
+    ownerEmail: email.trim().toLowerCase(),
+    ownerUsername: username.trim().toLowerCase(),
+    ownerPasswordHash: passwordHash,
+  });
+
+  const secret = c.env?.JWT_SECRET || DEFAULT_DEV_JWT_SECRET;
+  const accessToken = await signJwt(
+    {
+      sub: user.id,
+      businessId: user.businessId,
+      role: user.role,
+      exp: Math.floor(Date.now() / 1000) + ACCESS_TOKEN_EXPIRY,
+    },
+    secret
+  );
+
+  const refreshToken = generateRandomHex(32);
+  const tokenHash = await hashPassword(refreshToken, 10000);
+  memoryStore.refreshTokens.push({
+    id: crypto.randomUUID(),
+    userId: user.id,
+    tokenHash,
+    expiresAt: new Date(Date.now() + REFRESH_TOKEN_EXPIRY_MS),
+    revoked: false,
+  });
+
+  return c.json(
+    {
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        businessId: user.businessId,
+        businessName: business.name,
+        name: user.name,
+        email: user.email,
+        username: user.username,
+        role: user.role,
+        isActive: user.isActive,
+        mustChangePassword: user.mustChangePassword,
+        permissions: user.permissions,
+      },
+      business,
+    },
+    201
+  );
 });
 
 // POST /auth/refresh
@@ -189,7 +265,8 @@ auth.use('/*', authMiddleware);
 // GET /auth/me
 auth.get('/me', (c) => {
   const user = c.get('user');
-  return c.json({ user, business: memoryStore.business });
+  const business = memoryStore.businesses.find((b) => b.id === user.businessId) || memoryStore.business;
+  return c.json({ user, business });
 });
 
 // POST /auth/change-password

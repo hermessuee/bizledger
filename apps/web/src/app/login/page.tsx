@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Eye, EyeOff, Lock, User, ArrowRight, ShieldCheck } from 'lucide-react';
@@ -112,9 +113,17 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-gray-100 text-xs text-center text-gray-500">
-            Demo Credentials: <span className="font-mono text-gray-700 font-semibold">admin</span> /{' '}
-            <span className="font-mono text-gray-700 font-semibold">Admin@1234</span>
+          <div className="mt-6 pt-5 border-t border-gray-100 flex flex-col space-y-2 text-xs text-center text-gray-500">
+            <p>
+              New Distributor?{' '}
+              <Link href="/register" className="font-semibold text-blue-600 hover:underline">
+                Register Your Business Here
+              </Link>
+            </p>
+            <p>
+              Demo Credentials: <span className="font-mono text-gray-700 font-semibold">admin</span> /{' '}
+              <span className="font-mono text-gray-700 font-semibold">Admin@1234</span>
+            </p>
           </div>
         </div>
       </div>
