@@ -108,7 +108,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-between bg-[#071322] text-slate-100 relative overflow-x-hidden select-none">
+    <div className="h-screen max-h-screen w-full flex flex-col justify-between bg-[#071322] text-slate-100 relative overflow-hidden select-none">
       {/* Background ambient lighting matching Hermes Navy & Gold palette */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] max-w-full h-[500px] bg-gradient-to-b from-amber-500/10 via-blue-900/15 to-transparent blur-3xl pointer-events-none -z-0" />
       <div className="absolute -bottom-24 -right-24 w-[600px] max-w-full h-[600px] bg-blue-950/25 blur-3xl pointer-events-none -z-0" />
@@ -133,30 +133,30 @@ export default function LoginPage() {
 
       {/* Main Login Card Section - Revealed smoothly once intro has finished with zero initial blink */}
       {isIntroDetermined && !showVideo && (
-        <main className="relative z-10 flex-1 flex flex-col justify-center items-center px-4 sm:px-6 py-8 sm:py-12 w-full animate-glass-in">
-          <div className="w-full max-w-sm sm:max-w-md mx-auto">
+        <main className="relative z-10 flex-1 flex flex-col justify-center items-center px-4 py-2 sm:py-3 w-full overflow-hidden animate-glass-in">
+          <div className="w-full max-w-sm sm:max-w-md mx-auto my-auto">
             {/* Logo & Brand Header */}
-            <div className="text-center mb-5 sm:mb-6">
-              <div className="inline-block p-2 sm:p-2.5 rounded-2xl bg-white shadow-2xl shadow-amber-500/15 border-2 border-amber-500/30 mb-2.5 sm:mb-3 hover:scale-105 transition-all duration-300">
+            <div className="text-center mb-3 sm:mb-4">
+              <div className="inline-block p-1.5 sm:p-2 rounded-2xl bg-white shadow-2xl shadow-amber-500/15 border-2 border-amber-500/30 mb-2 hover:scale-105 transition-all duration-300">
                 <img
                   src={`${basePath}/hermes-logo.jpg`}
                   alt="Hermes Logo"
-                  className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
+                  className="w-14 h-14 sm:w-16 sm:h-16 object-contain"
                 />
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
                 Hermes <span className="text-amber-400">ERP</span>
               </h1>
-              <p className="mt-1 text-[11px] sm:text-xs text-slate-400 tracking-wide font-normal px-2">
-                Enterprise Distribution, GST Accounting
+              <p className="mt-0.5 text-[11px] sm:text-xs text-slate-400 tracking-wide font-normal px-2">
+                Enterprise Distribution & GST Accounting
               </p>
             </div>
 
             {/* Glassmorphic Form Card */}
-            <div className="glass-card py-6 px-5 sm:py-8 sm:px-8 rounded-2xl">
+            <div className="glass-card py-5 px-5 sm:py-6 sm:px-7 rounded-2xl shadow-2xl">
               {/* Admin Portal Mode Indicator Banner (no usernames shown) */}
               {isAdminMode && (
-                <div className="mb-4 p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs flex items-center justify-between animate-glass-in">
+                <div className="mb-3.5 p-2 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs flex items-center justify-between animate-glass-in">
                   <div className="flex items-center space-x-2">
                     <ShieldAlert className="w-4 h-4 text-amber-400 flex-shrink-0" />
                     <span className="font-semibold">Platform Admin Portal Mode</span>
@@ -174,16 +174,16 @@ export default function LoginPage() {
                 </div>
               )}
 
-              <form className="space-y-4" onSubmit={handleSubmit}>
+              <form className="space-y-3.5" onSubmit={handleSubmit}>
                 {error && (
-                  <div className="p-3.5 rounded-xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs flex items-start space-x-2.5 animate-glass-in">
+                  <div className="p-3 rounded-xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs flex items-start space-x-2.5 animate-glass-in">
                     <span className="font-medium">{error}</span>
                   </div>
                 )}
 
                 {/* Username / Email (No default username or suggestions) */}
                 <div>
-                  <label className="block text-[11px] font-semibold text-amber-300/90 uppercase tracking-wider mb-1.5">
+                  <label className="block text-[11px] font-semibold text-amber-300/90 uppercase tracking-wider mb-1">
                     Username or Business Email
                   </label>
                   <div className="relative rounded-lg shadow-sm">
@@ -197,14 +197,14 @@ export default function LoginPage() {
                       value={usernameOrEmail}
                       onChange={(e) => setUsernameOrEmail(e.target.value)}
                       placeholder=""
-                      className="block w-full pl-10 pr-3 py-2.5 glass-input rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                      className="block w-full pl-10 pr-3 py-2 glass-input rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
                     />
                   </div>
                 </div>
 
                 {/* Password */}
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center justify-between mb-1">
                     <label className="block text-[11px] font-semibold text-amber-300/90 uppercase tracking-wider">
                       Password
                     </label>
@@ -220,7 +220,7 @@ export default function LoginPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="block w-full pl-10 pr-10 py-2.5 glass-input rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                      className="block w-full pl-10 pr-10 py-2 glass-input rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
                     />
                     <button
                       type="button"
@@ -249,38 +249,25 @@ export default function LoginPage() {
                 </button>
               </form>
 
-              {/* Quick Actions & Navigation Links */}
-              <div className="mt-5 sm:mt-6 pt-4 sm:pt-5 border-t border-slate-800/80 space-y-3 text-xs text-center">
-                <div>
-                  <span className="text-slate-400">New Distribution Firm? </span>
-                  <Link
-                    href="/register"
-                    className="font-semibold text-amber-400 hover:text-amber-300 hover:underline transition"
-                  >
-                    Register Business Here →
-                  </Link>
-                </div>
-
-                {/* Admin Portal Button */}
-                <div className="pt-1.5">
-                  <button
-                    type="button"
-                    onClick={handleAdminPortalClick}
-                    className="w-full inline-flex items-center justify-center space-x-2 py-2 px-3 rounded-lg border border-amber-500/30 bg-slate-950/60 hover:bg-amber-500/15 text-amber-300 hover:text-amber-200 transition-all duration-200 font-medium"
-                  >
-                    <ShieldAlert className="w-4 h-4 text-amber-400" />
-                    <span>Admin Portal</span>
-                  </button>
-                </div>
+              {/* Quick Actions - Admin Portal only (Registration moved to Admin Portal) */}
+              <div className="mt-4 pt-3.5 border-t border-slate-800/80 text-xs text-center">
+                <button
+                  type="button"
+                  onClick={handleAdminPortalClick}
+                  className="w-full inline-flex items-center justify-center space-x-2 py-2 px-3 rounded-lg border border-amber-500/30 bg-slate-950/60 hover:bg-amber-500/15 text-amber-300 hover:text-amber-200 transition-all duration-200 font-medium"
+                >
+                  <ShieldAlert className="w-4 h-4 text-amber-400" />
+                  <span>Admin Portal</span>
+                </button>
               </div>
             </div>
           </div>
         </main>
       )}
 
-      {/* Corporate Three-Part Footer - Fully Mobile Responsive */}
-      <footer className="relative z-10 w-full py-3 sm:py-3.5 px-4 sm:px-6 border-t border-slate-800/80 bg-[#050e18]/90 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between text-[11px] sm:text-xs text-slate-400 gap-2 sm:gap-0 text-center sm:text-left">
+      {/* Corporate Three-Part Footer - Compact & Fixed */}
+      <footer className="relative z-10 w-full py-2.5 px-4 sm:px-6 border-t border-slate-800/80 bg-[#050e18]/90 backdrop-blur-md flex-shrink-0">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between text-[11px] sm:text-xs text-slate-400 gap-1.5 sm:gap-0 text-center sm:text-left">
           {/* Left Bottom: Version */}
           <div className="flex items-center space-x-2">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>

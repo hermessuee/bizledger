@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/AppShell';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { Business, MenuKey, MENU_LABELS, MENU_KEYS } from '@bizledger/shared';
+import { Business, MenuKey, MENU_LABELS, MENU_KEYS, INDIAN_STATES } from '@bizledger/shared';
 import {
   ShieldAlert,
   Building2,
@@ -25,6 +25,7 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
+  Plus,
 } from 'lucide-react';
 
 interface DistributorWithStats extends Business {
@@ -58,6 +59,72 @@ export default function SuperAdminPage() {
   const [selectedBusiness, setSelectedBusiness] = useState<DistributorWithStats | null>(null);
   const [activeMenus, setActiveMenus] = useState<MenuKey[]>([]);
   const [savingModules, setSavingModules] = useState(false);
+
+  // Registration Modal State for Super Admin onboarding
+  const [registerModalOpen, setRegisterModalOpen] = useState(false);
+  const [regBusinessName, setRegBusinessName] = useState('');
+  const [regGstin, setRegGstin] = useState('');
+  const [regStateCode, setRegStateCode] = useState('27');
+  const [regAddress, setRegAddress] = useState('');
+  const [regOwnerName, setRegOwnerName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regUsername, setRegUsername] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regConfirmPassword, setRegConfirmPassword] = useState('');
+  const [regSubmitting, setRegSubmitting] = useState(false);
+  const [regError, setRegError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const handleGstinChange = (val: string) => {
+    const upper = val.toUpperCase().slice(0, 15);
+    setRegGstin(upper);
+    if (upper.length >= 2 && INDIAN_STATES[upper.slice(0, 2)]) {
+      setRegStateCode(upper.slice(0, 2));
+    }
+  };
+
+  const handleCreateDistributor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegError(null);
+    if (regPassword !== regConfirmPassword) {
+      setRegError('Passwords do not match');
+      return;
+    }
+    if (regPassword.length < 8) {
+      setRegError('Password must be at least 8 characters long');
+      return;
+    }
+
+    try {
+      setRegSubmitting(true);
+      await api.post('/api/v1/admin/businesses', {
+        businessName: regBusinessName,
+        gstin: regGstin || undefined,
+        stateCode: regStateCode,
+        address: regAddress || undefined,
+        ownerName: regOwnerName,
+        email: regEmail,
+        username: regUsername,
+        password: regPassword,
+      });
+
+      setSuccessMessage(`Distributor "${regBusinessName}" registered successfully!`);
+      setRegisterModalOpen(false);
+      setRegBusinessName('');
+      setRegGstin('');
+      setRegAddress('');
+      setRegOwnerName('');
+      setRegEmail('');
+      setRegUsername('');
+      setRegPassword('');
+      setRegConfirmPassword('');
+      fetchDistributors();
+    } catch (err: any) {
+      setRegError(err.message || 'Failed to register distributor');
+    } finally {
+      setRegSubmitting(false);
+    }
+  };
 
   const fetchDistributors = async () => {
     try {
@@ -155,36 +222,36 @@ export default function SuperAdminPage() {
 
   if (!user || (user.role !== 'super_admin' && user.username !== 'anoopsue')) {
     return (
-      <div className="min-h-screen flex flex-col justify-between bg-[#071322] text-slate-100 relative overflow-x-hidden select-none">
+      <div className="h-screen max-h-screen w-full flex flex-col justify-between bg-[#071322] text-slate-100 relative overflow-hidden select-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] max-w-full h-[500px] bg-gradient-to-b from-amber-500/10 via-blue-900/15 to-transparent blur-3xl pointer-events-none -z-0" />
-        <main className="relative z-10 flex-1 flex flex-col justify-center items-center px-4 sm:px-6 py-8 sm:py-12 w-full">
-          <div className="w-full max-w-sm sm:max-w-md mx-auto">
-            <div className="text-center mb-5 sm:mb-6">
-              <div className="inline-block p-2 sm:p-2.5 rounded-2xl bg-white shadow-2xl shadow-amber-500/10 border-2 border-amber-500/30 mb-2.5 sm:mb-3 hover:scale-105 transition-transform duration-300">
+        <main className="relative z-10 flex-1 flex flex-col justify-center items-center px-4 py-2 sm:py-3 w-full overflow-hidden">
+          <div className="w-full max-w-sm sm:max-w-md mx-auto my-auto">
+            <div className="text-center mb-3 sm:mb-4">
+              <div className="inline-block p-1.5 sm:p-2 rounded-2xl bg-white shadow-2xl shadow-amber-500/10 border-2 border-amber-500/30 mb-2 hover:scale-105 transition-transform duration-300">
                 <img
                   src={`${basePath}/hermes-logo.jpg`}
                   alt="Hermes Logo"
-                  className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
+                  className="w-14 h-14 sm:w-16 sm:h-16 object-contain"
                 />
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
                 Admin <span className="text-amber-400">Portal</span>
               </h1>
-              <p className="mt-1 text-[11px] sm:text-xs text-slate-400 tracking-wide font-normal px-2">
+              <p className="mt-0.5 text-[11px] sm:text-xs text-slate-400 tracking-wide font-normal px-2">
                 Master Platform Multi-Distributor Governance
               </p>
             </div>
 
-            <div className="glass-card py-6 px-5 sm:py-8 sm:px-8 rounded-2xl animate-glass-in">
-              <form className="space-y-4" onSubmit={handleAdminSignIn}>
+            <div className="glass-card py-5 px-5 sm:py-6 sm:px-7 rounded-2xl shadow-2xl animate-glass-in">
+              <form className="space-y-3.5" onSubmit={handleAdminSignIn}>
                 {adminLoginError && (
-                  <div className="p-3.5 rounded-xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs flex items-start space-x-2.5 animate-glass-in">
+                  <div className="p-3 rounded-xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs flex items-start space-x-2.5 animate-glass-in">
                     <span className="font-medium">{adminLoginError}</span>
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-amber-300/90 uppercase tracking-wider mb-1.5">
+                  <label className="block text-[11px] font-semibold text-amber-300/90 uppercase tracking-wider mb-1">
                     Admin Username
                   </label>
                   <div className="relative rounded-lg shadow-sm">
@@ -198,13 +265,13 @@ export default function SuperAdminPage() {
                       value={adminUsername}
                       onChange={(e) => setAdminUsername(e.target.value)}
                       placeholder=""
-                      className="block w-full pl-10 pr-3 py-2.5 glass-input rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                      className="block w-full pl-10 pr-3 py-2 glass-input rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-amber-300/90 uppercase tracking-wider mb-1.5">
+                  <label className="block text-[11px] font-semibold text-amber-300/90 uppercase tracking-wider mb-1">
                     Password
                   </label>
                   <div className="relative rounded-lg shadow-sm">
@@ -217,7 +284,7 @@ export default function SuperAdminPage() {
                       value={adminPassword}
                       onChange={(e) => setAdminPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="block w-full pl-10 pr-10 py-2.5 glass-input rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                      className="block w-full pl-10 pr-10 py-2 glass-input rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
                     />
                     <button
                       type="button"
@@ -245,7 +312,7 @@ export default function SuperAdminPage() {
                 </button>
               </form>
 
-              <div className="mt-6 pt-5 border-t border-slate-800/80 text-xs text-center">
+              <div className="mt-4 pt-3.5 border-t border-slate-800/80 text-xs text-center">
                 <Link
                   href="/login"
                   className="text-amber-400 hover:text-amber-300 hover:underline transition"
@@ -257,8 +324,8 @@ export default function SuperAdminPage() {
           </div>
         </main>
 
-        <footer className="relative z-10 w-full py-3 sm:py-3.5 px-4 sm:px-6 border-t border-slate-800/80 bg-[#050e18]/90 backdrop-blur-md">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between text-[11px] sm:text-xs text-slate-400 gap-2 sm:gap-0 text-center sm:text-left">
+        <footer className="relative z-10 w-full py-2.5 px-4 sm:px-6 border-t border-slate-800/80 bg-[#050e18]/90 backdrop-blur-md flex-shrink-0">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between text-[11px] sm:text-xs text-slate-400 gap-1.5 sm:gap-0 text-center sm:text-left">
             <div className="flex items-center space-x-2">
               <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span className="font-mono text-slate-400">Version 1.0.4 • Hermes ERP</span>
@@ -294,6 +361,18 @@ export default function SuperAdminPage() {
           </div>
         )}
 
+        {successMessage && (
+          <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between animate-glass-in">
+            <div className="flex items-center space-x-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <span className="font-medium">{successMessage}</span>
+            </div>
+            <button onClick={() => setSuccessMessage(null)} className="text-emerald-400 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <div className="flex items-center space-x-2.5">
@@ -319,9 +398,20 @@ export default function SuperAdminPage() {
                 placeholder="Search distributor or GSTIN..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+                className="pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400 w-56 sm:w-64"
               />
             </div>
+
+            <button
+              onClick={() => {
+                setRegisterModalOpen(true);
+                setRegError(null);
+              }}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:via-yellow-300 hover:to-amber-400 shadow-md shadow-amber-500/20 transition-all duration-200 transform active:scale-95 whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Register Distributor</span>
+            </button>
           </div>
         </div>
 
@@ -523,6 +613,204 @@ export default function SuperAdminPage() {
                   {savingModules ? 'Saving Changes...' : 'Save Module Permissions'}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Onboard / Register New Distributor Modal */}
+        {registerModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-glass-in overflow-y-auto">
+            <div className="glass-menu rounded-2xl max-w-xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-amber-500/30 overflow-hidden my-auto">
+              <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-2 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-xl">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Register New Distributor Business</h3>
+                    <p className="text-[11px] text-slate-400">
+                      Create an isolated multi-tenant distributor firm and administrator login.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setRegisterModalOpen(false)}
+                  className="text-slate-400 hover:text-white transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateDistributor} className="flex-1 overflow-y-auto p-6 space-y-4">
+                {regError && (
+                  <div className="p-3 rounded-xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs flex items-start space-x-2 animate-glass-in">
+                    <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                    <span>{regError}</span>
+                  </div>
+                )}
+
+                {/* Section 1: Firm Profile */}
+                <div>
+                  <h4 className="text-[11px] font-bold text-amber-400 uppercase tracking-wider mb-2.5">
+                    1. Distributor Business Details
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Distributor Firm Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={regBusinessName}
+                        onChange={(e) => setRegBusinessName(e.target.value)}
+                        placeholder="e.g. Metro Pharma & Healthcare Distributors"
+                        className="w-full px-3 py-2 text-xs rounded-lg glass-input text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        GSTIN (15 Digits)
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={15}
+                        value={regGstin}
+                        onChange={(e) => handleGstinChange(e.target.value)}
+                        placeholder="27ABCDE1234F1Z5"
+                        className="w-full px-3 py-2 text-xs rounded-lg glass-input text-white uppercase font-mono focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        State & Code *
+                      </label>
+                      <select
+                        value={regStateCode}
+                        onChange={(e) => setRegStateCode(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-lg glass-input text-white focus:outline-none focus:border-amber-400"
+                      >
+                        {Object.entries(INDIAN_STATES).map(([code, name]) => (
+                          <option key={code} value={code} className="bg-slate-900 text-white">
+                            {code} - {name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Registered Address
+                      </label>
+                      <input
+                        type="text"
+                        value={regAddress}
+                        onChange={(e) => setRegAddress(e.target.value)}
+                        placeholder="e.g. Gala 12, APMC Market, Vashi, Navi Mumbai"
+                        className="w-full px-3 py-2 text-xs rounded-lg glass-input text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Owner / Admin Account */}
+                <div className="pt-2 border-t border-slate-800">
+                  <h4 className="text-[11px] font-bold text-amber-400 uppercase tracking-wider mb-2.5">
+                    2. Primary Administrator Account
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Proprietor / Owner Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={regOwnerName}
+                        onChange={(e) => setRegOwnerName(e.target.value)}
+                        placeholder="e.g. Ramesh Shah"
+                        className="w-full px-3 py-2 text-xs rounded-lg glass-input text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Business Email *
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={regEmail}
+                        onChange={(e) => setRegEmail(e.target.value)}
+                        placeholder="accounts@metropharma.in"
+                        className="w-full px-3 py-2 text-xs rounded-lg glass-input text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Distributor Username *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        autoComplete="off"
+                        value={regUsername}
+                        onChange={(e) => setRegUsername(e.target.value)}
+                        placeholder="e.g. metropharma"
+                        className="w-full px-3 py-2 text-xs rounded-lg glass-input text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Password (Min 8 chars) *
+                      </label>
+                      <input
+                        type="password"
+                        required
+                        value={regPassword}
+                        onChange={(e) => setRegPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full px-3 py-2 text-xs rounded-lg glass-input text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Confirm Password *
+                      </label>
+                      <input
+                        type="password"
+                        required
+                        value={regConfirmPassword}
+                        onChange={(e) => setRegConfirmPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full px-3 py-2 text-xs rounded-lg glass-input text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-800 flex items-center justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => setRegisterModalOpen(false)}
+                    className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white rounded-lg transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={regSubmitting}
+                    className="px-5 py-2 text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:via-yellow-300 hover:to-amber-400 rounded-lg shadow-lg shadow-amber-500/20 transition-all duration-200 disabled:opacity-50"
+                  >
+                    {regSubmitting ? 'Registering Distributor...' : 'Register & Onboard Distributor'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
