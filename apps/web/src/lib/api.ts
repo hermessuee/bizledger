@@ -1,6 +1,6 @@
 import { UserSession } from '@bizledger/shared';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://br-purple-night-bep8owab-api.compute.c-9.us-east-2.aws.neon.tech';
 
 class ApiClient {
   private accessToken: string | null = null;

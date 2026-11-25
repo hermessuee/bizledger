@@ -9,6 +9,7 @@ export default defineConfig({
   aiGateway: true,
   functions: {
     hello: { name: "Hello World", source: "./hello.ts" },
+    api: { name: "BizLedger API", source: "./neon-api.ts" },
   },
   buckets: {
     // "private" is the default; use "public_read" for anonymous reads

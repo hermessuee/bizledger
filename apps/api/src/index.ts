@@ -16,6 +16,19 @@ import { formatPaise } from '@bizledger/shared';
 
 const app = new Hono<AppContext>();
 
+// Hydrate c.env from process.env if running on Node.js / Neon Functions
+app.use('*', async (c, next) => {
+  if (!c.env) {
+    (c as any).env = {};
+  }
+  c.env.DATABASE_URL = c.env.DATABASE_URL || process.env.DATABASE_URL;
+  c.env.JWT_SECRET = c.env.JWT_SECRET || process.env.JWT_SECRET || 'bizledger-super-secure-production-jwt-key-2026';
+  c.env.ALLOWED_ORIGIN = c.env.ALLOWED_ORIGIN || process.env.ALLOWED_ORIGIN || '*';
+  c.env.RESEND_API_KEY = c.env.RESEND_API_KEY || process.env.RESEND_API_KEY;
+  c.env.EMAIL_FROM = c.env.EMAIL_FROM || process.env.EMAIL_FROM;
+  await next();
+});
+
 // CORS middleware allowing configured origin or localhost
 app.use('*', async (c, next) => {
   const origin = c.env?.ALLOWED_ORIGIN || '*';
