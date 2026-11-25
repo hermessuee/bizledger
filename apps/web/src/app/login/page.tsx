@@ -292,9 +292,10 @@ export default function LoginPage() {
                   <input
                     type="text"
                     required
+                    autoComplete="off"
                     value={usernameOrEmail}
                     onChange={(e) => setUsernameOrEmail(e.target.value)}
-                    placeholder="e.g. admin or anoopsue"
+                    placeholder=""
                     className="block w-full pl-10 pr-3 py-2.5 bg-[#06101d] border border-slate-700/80 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
                   />
                 </div>
