@@ -121,16 +121,25 @@ export function AppShell({
   useEffect(() => {
     if (user && hasPermission('cheques', 'view')) {
       fetchChequeAlerts().then(() => {
-        // Pop-up modal if there are due or overdue items
-        api.get<ChequeAlertsResponse>('/api/v1/cheques/alerts').then((res) => {
-          if (res.totalCount > 0) {
-            setAlerts(res);
-            setChequeAlertsOpen(true);
-          }
-        });
+        // Pop-up modal ONLY once on initial login or new session
+        const today = new Date().toISOString().split('T')[0];
+        const dismissedDate = typeof window !== 'undefined' ? localStorage.getItem('bizledger_alerts_dismissed_date') : null;
+        const alreadyShownInSession = typeof window !== 'undefined' ? sessionStorage.getItem('bizledger_alerts_shown_session') : null;
+
+        if (dismissedDate !== today && !alreadyShownInSession) {
+          api.get<ChequeAlertsResponse>('/api/v1/cheques/alerts').then((res) => {
+            if (res.totalCount > 0) {
+              setAlerts(res);
+              if (typeof window !== 'undefined') {
+                sessionStorage.setItem('bizledger_alerts_shown_session', 'true');
+              }
+              setChequeAlertsOpen(true);
+            }
+          });
+        }
       });
 
-      // Poll every 5 minutes
+      // Poll every 5 minutes (updates bell badge count only without popping up modal)
       const interval = setInterval(fetchChequeAlerts, 5 * 60 * 1000);
       return () => clearInterval(interval);
     }

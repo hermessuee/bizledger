@@ -46,6 +46,22 @@ export function ChequeAlertsModal({ isOpen, onClose, alerts, onRefresh }: Cheque
     }
   };
 
+  const handleDismissForToday = () => {
+    if (typeof window !== 'undefined') {
+      const today = new Date().toISOString().split('T')[0];
+      localStorage.setItem('bizledger_alerts_dismissed_date', today);
+      sessionStorage.setItem('bizledger_alerts_shown_session', 'true');
+    }
+    onClose();
+  };
+
+  const handleClose = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('bizledger_alerts_shown_session', 'true');
+    }
+    onClose();
+  };
+
   const calculateDaysDiff = (dateStr: string) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -160,7 +176,7 @@ export function ChequeAlertsModal({ isOpen, onClose, alerts, onRefresh }: Cheque
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
           >
             <X className="w-5 h-5" />
@@ -260,7 +276,7 @@ export function ChequeAlertsModal({ isOpen, onClose, alerts, onRefresh }: Cheque
             Automated alerts check active post-dated cheques every 5 minutes
           </span>
           <button
-            onClick={onClose}
+            onClick={handleDismissForToday}
             className="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-lg transition"
           >
             Dismiss for Today

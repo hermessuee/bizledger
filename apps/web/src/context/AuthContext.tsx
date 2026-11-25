@@ -63,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     api.setToken(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem('bizledger_refresh_token');
+      sessionStorage.removeItem('bizledger_alerts_shown_session');
     }
     setUser(null);
     setBusiness(null);
