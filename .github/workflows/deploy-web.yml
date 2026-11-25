@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -37,13 +37,23 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'https://br-purple-night-bep8owab-api.compute.c-9.us-east-2.aws.neon.tech' }}
           NEXT_PUBLIC_BASE_PATH: ${{ github.event.repository.name && format('/{0}', github.event.repository.name) || '' }}
-        run: npm run build --workspace=@bizledger/web
+        run: |
+          npm run build --workspace=@bizledger/web
+          touch ./apps/web/out/.nojekyll
+
+      - name: Deploy to gh-pages branch (branch fallback)
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./apps/web/out
+        continue-on-error: true
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./apps/web/out
 
-      - name: Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages (Actions engine)
         id: deployment
         uses: actions/deploy-pages@v4
+        continue-on-error: true
