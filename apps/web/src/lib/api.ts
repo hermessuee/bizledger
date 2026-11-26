@@ -65,6 +65,13 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
+    if (typeof window !== 'undefined') {
+      const activeBizId = localStorage.getItem('hermes_active_business_id');
+      if (activeBizId && activeBizId !== 'all') {
+        headers['x-business-id'] = activeBizId;
+      }
+    }
+
     const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
     const controller = new AbortController();

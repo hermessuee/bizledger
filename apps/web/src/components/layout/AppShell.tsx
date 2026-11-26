@@ -94,12 +94,25 @@ export function AppShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, business, loading, logout, hasPermission } = useAuth();
+  const { user, business, loading, logout, hasPermission, switchBusiness } = useAuth();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [chequeAlertsOpen, setChequeAlertsOpen] = useState(false);
+  const [adminBusinesses, setAdminBusinesses] = useState<any[]>([]);
+
+  // Fetch all distributor businesses for Super Admin context switcher
+  useEffect(() => {
+    if (user?.role === 'super_admin') {
+      api
+        .get('/api/v1/admin/businesses')
+        .then((res: any) => {
+          setAdminBusinesses(res.businesses || []);
+        })
+        .catch(() => {});
+    }
+  }, [user?.role]);
 
   const [alerts, setAlerts] = useState<ChequeAlertsResponse>({
     overdue: [],
@@ -294,7 +307,32 @@ export function AppShell({
               <Menu className="w-5 h-5" />
             </button>
             <div className="flex items-center space-x-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
-              <span>{business?.name || 'Apex Trading'}</span>
+              {user.role === 'super_admin' ? (
+                <div className="flex items-center space-x-2">
+                  <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                    ⚡ Super-Admin Context:
+                  </span>
+                  <select
+                    value={business?.id || '00000000-0000-0000-0000-000000000000'}
+                    onChange={async (e) => {
+                      const targetId = e.target.value;
+                      await switchBusiness(targetId === '00000000-0000-0000-0000-000000000000' ? null : targetId);
+                    }}
+                    className="text-xs font-bold px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer shadow-sm max-w-[220px] sm:max-w-none truncate"
+                  >
+                    <option value="00000000-0000-0000-0000-000000000000">
+                      🌐 Central Platform Administration (Global)
+                    </option>
+                    {adminBusinesses.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        🏢 {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <span>{business?.name || 'Apex Trading'}</span>
+              )}
               <span className="text-slate-400">/</span>
               <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                 FY 2026-27 (Apr-Mar)
@@ -365,6 +403,26 @@ export function AppShell({
             </div>
           </div>
         </header>
+
+        {/* Super Admin Operating Context Banner */}
+        {user.role === 'super_admin' && business?.id && business.id !== '00000000-0000-0000-0000-000000000000' && (
+          <div className="bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 px-4 sm:px-6 py-2 flex items-center justify-between text-xs font-bold shadow-sm border-b border-amber-600/30">
+            <div className="flex items-center space-x-2 truncate">
+              <span className="px-2 py-0.5 bg-slate-950 text-amber-400 rounded uppercase tracking-wider text-[10px] font-extrabold flex-shrink-0">
+                Super-Admin Power Mode
+              </span>
+              <span className="truncate">
+                Operating inside <strong className="underline font-extrabold">{business.name}</strong> ledger. Full add, edit, and delete power active.
+              </span>
+            </div>
+            <button
+              onClick={() => switchBusiness(null)}
+              className="ml-3 px-3 py-1 bg-slate-950 hover:bg-slate-800 text-white rounded-lg text-[11px] font-bold transition flex-shrink-0 shadow-sm"
+            >
+              Return to Global Admin
+            </button>
+          </div>
+        )}
 
         {/* Main Content Body */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">

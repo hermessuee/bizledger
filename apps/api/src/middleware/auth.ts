@@ -27,7 +27,7 @@ export const authMiddleware: MiddlewareHandler<AppContext> = async (c, next) => 
 
   // Find user in store
   const user = memoryStore.users.find(
-    (u) => u.id === payload.sub && u.businessId === payload.businessId
+    (u) => u.id === payload.sub && (u.role === 'super_admin' || u.businessId === payload.businessId)
   );
 
   if (!user) {
@@ -57,10 +57,18 @@ export const authMiddleware: MiddlewareHandler<AppContext> = async (c, next) => 
     );
   }
 
+  // Dynamic context switching for Super Admin power user
+  const requestedBusinessId = c.req.header('x-business-id') || c.req.query('businessId');
+  const activeBusinessId = (user.role === 'super_admin' && requestedBusinessId && requestedBusinessId !== 'all')
+    ? requestedBusinessId
+    : user.businessId;
+
+  const currentBiz = memoryStore.businesses.find((b) => b.id === activeBusinessId) || memoryStore.business;
+
   c.set('user', {
     id: user.id,
-    businessId: user.businessId,
-    businessName: memoryStore.business.name,
+    businessId: activeBusinessId,
+    businessName: currentBiz?.name || 'Hermes ERP',
     name: user.name,
     email: user.email,
     username: user.username,
@@ -69,7 +77,7 @@ export const authMiddleware: MiddlewareHandler<AppContext> = async (c, next) => 
     mustChangePassword: user.mustChangePassword,
     permissions: user.permissions,
   });
-  c.set('businessId', user.businessId);
+  c.set('businessId', activeBusinessId);
 
   await next();
 };

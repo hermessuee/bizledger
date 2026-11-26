@@ -25,8 +25,8 @@ export function requirePermission(
       );
     }
 
-    // Owner role has full bypass
-    if (user.role === 'owner') {
+    // Super Admin and Owner roles have full unrestricted bypass across all features
+    if (user.role === 'super_admin' || user.role === 'owner') {
       return next();
     }
 

@@ -12,6 +12,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   hasPermission: (menuKey: MenuKey, action?: 'view' | 'create' | 'edit' | 'delete' | 'export') => boolean;
   refreshUser: () => Promise<void>;
+  switchBusiness: (businessId: string | null) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -115,12 +116,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setBusiness(null);
   };
 
+  const switchBusiness = async (businessId: string | null) => {
+    if (typeof window !== 'undefined') {
+      if (businessId && businessId !== 'all') {
+        localStorage.setItem('hermes_active_business_id', businessId);
+      } else {
+        localStorage.removeItem('hermes_active_business_id');
+      }
+    }
+    api.clearCache();
+    await fetchSession();
+  };
+
   const hasPermission = (
     menuKey: MenuKey,
     action: 'view' | 'create' | 'edit' | 'delete' | 'export' = 'view'
   ): boolean => {
     if (!user) return false;
-    if (user.role === 'owner') return true;
+    // Super Administrator and Owner roles have 100% full unrestricted permission across all features
+    if (user.role === 'super_admin' || user.role === 'owner') return true;
 
     const actionMap = {
       view: 'canView',
@@ -145,6 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         hasPermission,
         refreshUser: fetchSession,
+        switchBusiness,
       }}
     >
       {children}
