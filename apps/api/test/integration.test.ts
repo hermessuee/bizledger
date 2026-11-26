@@ -177,4 +177,49 @@ describe('API Integration & Accounting Workflows', () => {
     const tb = await tbRes.json();
     expect(tb.isBalanced).toBe(true);
   });
+
+  it('Super Admin operates as global power user across all distributors', async () => {
+    // 1. Super Admin login
+    const saLoginRes = await app.request('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        usernameOrEmail: 'anoopsue',
+        password: 'hermes1*',
+      }),
+    });
+    expect(saLoginRes.status).toBe(200);
+    const saData = await saLoginRes.json();
+    expect(saData.user.role).toBe('super_admin');
+    expect(saData.user.businessId).toBe('all');
+    const saToken = saData.accessToken;
+
+    // 2. Fetch businesses list - verify dummy central platform admin is absent
+    const saBizRes = await app.request('/api/v1/admin/businesses', {
+      headers: { Authorization: `Bearer ${saToken}` },
+    });
+    expect(saBizRes.status).toBe(200);
+    const { businesses } = await saBizRes.json();
+    expect(businesses.some((b: any) => b.id === '00000000-0000-0000-0000-000000000000')).toBe(false);
+    expect(businesses.length).toBeGreaterThanOrEqual(2);
+
+    // 3. In Global All mode, fetch documents across distributors
+    const docsRes = await app.request('/api/v1/documents', {
+      headers: { Authorization: `Bearer ${saToken}` },
+    });
+    expect(docsRes.status).toBe(200);
+    const { documents } = await docsRes.json();
+    expect(documents.length).toBeGreaterThan(0);
+    expect(documents[0].distributorName).toBeDefined();
+
+    // 4. Super Admin master authority to delete a document
+    const targetDoc = documents[0];
+    const delRes = await app.request(`/api/v1/documents/${targetDoc.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${saToken}` },
+    });
+    expect(delRes.status).toBe(200);
+    const delData = await delRes.json();
+    expect(delData.success).toBe(true);
+  });
 });

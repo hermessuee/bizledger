@@ -36,7 +36,7 @@ import {
 type MasterTab = 'customers' | 'vendors' | 'items' | 'invoices' | 'bills';
 
 export default function MasterGovernancePage() {
-  const { business, hasPermission } = useAuth();
+  const { business, user, hasPermission } = useAuth();
   const [activeTab, setActiveTab] = useState<MasterTab>('customers');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -47,6 +47,10 @@ export default function MasterGovernancePage() {
   const [items, setItems] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [bills, setBills] = useState<any[]>([]);
+
+  // Multi-distributor state for Super-Admin governance
+  const [distributors, setDistributors] = useState<any[]>([]);
+  const [targetBusinessId, setTargetBusinessId] = useState<string>('');
 
   // Party Modal state (Customer / Vendor)
   const [isPartyModalOpen, setIsPartyModalOpen] = useState(false);
@@ -91,6 +95,19 @@ export default function MasterGovernancePage() {
       setItems(iRes.items || []);
       setInvoices(invRes.documents || []);
       setBills(billRes.documents || []);
+
+      if (user?.role === 'super_admin' || user?.username === 'anoopsue') {
+        try {
+          const bRes = await api.get('/api/v1/admin/businesses');
+          const list = (bRes.businesses || []).filter(
+            (b: any) => b.id !== '00000000-0000-0000-0000-000000000000'
+          );
+          setDistributors(list);
+          if (list.length > 0 && !targetBusinessId) {
+            setTargetBusinessId(list[0].id);
+          }
+        } catch {}
+      }
     } finally {
       setLoading(false);
     }
@@ -98,7 +115,7 @@ export default function MasterGovernancePage() {
 
   useEffect(() => {
     fetchAllData();
-  }, []);
+  }, [user]);
 
   // Customer / Vendor Handlers
   const handleOpenAddParty = (kind: 'customer' | 'vendor') => {
@@ -112,6 +129,9 @@ export default function MasterGovernancePage() {
     setPartyCreditDays(30);
     setPartyOpeningBalance(0);
     setPartyIsActive(true);
+    if (distributors.length > 0) {
+      setTargetBusinessId(distributors[0].id);
+    }
     setModalError(null);
     setIsPartyModalOpen(true);
   };
@@ -127,6 +147,7 @@ export default function MasterGovernancePage() {
     setPartyCreditDays(p.creditDays || 30);
     setPartyOpeningBalance((p.openingBalance || 0) / 100);
     setPartyIsActive(p.isActive !== false);
+    setTargetBusinessId(p.businessId || '');
     setModalError(null);
     setIsPartyModalOpen(true);
   };
@@ -153,6 +174,7 @@ export default function MasterGovernancePage() {
         });
       } else {
         await api.post('/api/v1/parties', {
+          businessId: user?.role === 'super_admin' ? (targetBusinessId || undefined) : undefined,
           name: partyName.trim(),
           kind: partyKind,
           gstin: partyGstin.trim().toUpperCase() || undefined,
@@ -204,6 +226,9 @@ export default function MasterGovernancePage() {
     setItemGstRate(18);
     setItemStockQty(0);
     setItemIsActive(true);
+    if (distributors.length > 0) {
+      setTargetBusinessId(distributors[0].id);
+    }
     setModalError(null);
     setIsItemModalOpen(true);
   };
@@ -218,6 +243,7 @@ export default function MasterGovernancePage() {
     setItemGstRate(item.gstRate || 18);
     setItemStockQty(item.stockQty || 0);
     setItemIsActive(item.isActive !== false);
+    setTargetBusinessId(item.businessId || '');
     setModalError(null);
     setIsItemModalOpen(true);
   };
@@ -248,6 +274,7 @@ export default function MasterGovernancePage() {
         });
       } else {
         await api.post('/api/v1/items', {
+          businessId: user?.role === 'super_admin' ? (targetBusinessId || undefined) : undefined,
           name: itemName.trim(),
           hsnSac: itemHsnSac.trim() || undefined,
           unit: itemUnit.trim().toUpperCase() || 'PCS',
@@ -307,6 +334,16 @@ export default function MasterGovernancePage() {
       await fetchAllData();
     } catch (err: any) {
       alert(err.message || 'Failed to delete draft document');
+    }
+  };
+
+  const handleSuperAdminDeleteDoc = async (doc: any) => {
+    if (!confirm(`⚠️ Super-Admin Master Override:\nPermanently delete document #${doc.docNo}? This will delete the entry across all distributor accounting ledgers.`)) return;
+    try {
+      await api.delete(`/api/v1/documents/${doc.id}`);
+      await fetchAllData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete document');
     }
   };
 
@@ -445,6 +482,9 @@ export default function MasterGovernancePage() {
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="py-3 px-4">Customer Name</th>
+                    {user?.role === 'super_admin' && (
+                      <th className="py-3 px-4 text-indigo-600 dark:text-indigo-400">Distributor Firm</th>
+                    )}
                     <th className="py-3 px-4">GSTIN</th>
                     <th className="py-3 px-4">Phone / Contact</th>
                     <th className="py-3 px-4 text-right">Balance</th>
@@ -465,6 +505,13 @@ export default function MasterGovernancePage() {
                         <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">
                           {c.name}
                         </td>
+                        {user?.role === 'super_admin' && (
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                              {c.distributorName || 'Distributor'}
+                            </span>
+                          </td>
+                        )}
                         <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
                           {c.gstin || '-'}
                         </td>
@@ -531,6 +578,9 @@ export default function MasterGovernancePage() {
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="py-3 px-4">Vendor / Supplier Name</th>
+                    {user?.role === 'super_admin' && (
+                      <th className="py-3 px-4 text-indigo-600 dark:text-indigo-400">Distributor Firm</th>
+                    )}
                     <th className="py-3 px-4">GSTIN</th>
                     <th className="py-3 px-4">Phone / Contact</th>
                     <th className="py-3 px-4 text-right">Balance</th>
@@ -551,6 +601,13 @@ export default function MasterGovernancePage() {
                         <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">
                           {v.name}
                         </td>
+                        {user?.role === 'super_admin' && (
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                              {v.distributorName || 'Distributor'}
+                            </span>
+                          </td>
+                        )}
                         <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
                           {v.gstin || '-'}
                         </td>
@@ -617,6 +674,9 @@ export default function MasterGovernancePage() {
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="py-3 px-4">Item Name</th>
+                    {user?.role === 'super_admin' && (
+                      <th className="py-3 px-4 text-indigo-600 dark:text-indigo-400">Distributor Firm</th>
+                    )}
                     <th className="py-3 px-4">HSN / SAC</th>
                     <th className="py-3 px-4 text-center">Unit of Measure</th>
                     <th className="py-3 px-4 text-right">Sale Price</th>
@@ -639,6 +699,13 @@ export default function MasterGovernancePage() {
                         <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">
                           {i.name}
                         </td>
+                        {user?.role === 'super_admin' && (
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                              {i.distributorName || 'Distributor'}
+                            </span>
+                          </td>
+                        )}
                         <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
                           {i.hsnSac || '-'}
                         </td>
@@ -713,6 +780,9 @@ export default function MasterGovernancePage() {
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="py-3 px-4">Invoice #</th>
+                    {user?.role === 'super_admin' && (
+                      <th className="py-3 px-4 text-indigo-600 dark:text-indigo-400">Distributor Firm</th>
+                    )}
                     <th className="py-3 px-4">Date</th>
                     <th className="py-3 px-4">Customer</th>
                     <th className="py-3 px-4 text-right">Total (₹)</th>
@@ -732,6 +802,13 @@ export default function MasterGovernancePage() {
                         <td className="py-3 px-4 font-mono font-bold text-blue-600 dark:text-blue-400">
                           {inv.docNo}
                         </td>
+                        {user?.role === 'super_admin' && (
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                              {inv.distributorName || 'Distributor'}
+                            </span>
+                          </td>
+                        )}
                         <td className="py-3 px-4 font-mono">{inv.docDate}</td>
                         <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">
                           {inv.partyName}
@@ -776,15 +853,37 @@ export default function MasterGovernancePage() {
                               </button>
                             </>
                           ) : inv.status === 'posted' ? (
-                            <button
-                              onClick={() => handleVoidDocument(inv)}
-                              className="px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-[10px] font-semibold transition inline-flex items-center"
-                            >
-                              <Ban className="w-2.5 h-2.5 mr-0.5" />
-                              <span>Void</span>
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleVoidDocument(inv)}
+                                className="px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-[10px] font-semibold transition inline-flex items-center"
+                              >
+                                <Ban className="w-2.5 h-2.5 mr-0.5" />
+                                <span>Void</span>
+                              </button>
+                              {user?.role === 'super_admin' && (
+                                <button
+                                  onClick={() => handleSuperAdminDeleteDoc(inv)}
+                                  className="p-1 text-red-500 hover:text-red-700 rounded transition inline-flex items-center ml-1"
+                                  title="Super-Admin Master Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </>
                           ) : (
-                            <span className="text-slate-400 italic text-[11px]">No actions</span>
+                            <>
+                              <span className="text-slate-400 italic text-[11px]">No actions</span>
+                              {user?.role === 'super_admin' && (
+                                <button
+                                  onClick={() => handleSuperAdminDeleteDoc(inv)}
+                                  className="p-1 text-red-500 hover:text-red-700 rounded transition inline-flex items-center ml-1"
+                                  title="Super-Admin Master Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </>
                           )}
                         </td>
                       </tr>
@@ -805,6 +904,9 @@ export default function MasterGovernancePage() {
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="py-3 px-4">Bill #</th>
+                    {user?.role === 'super_admin' && (
+                      <th className="py-3 px-4 text-indigo-600 dark:text-indigo-400">Distributor Firm</th>
+                    )}
                     <th className="py-3 px-4">Date</th>
                     <th className="py-3 px-4">Vendor / Supplier</th>
                     <th className="py-3 px-4 text-right">Total (₹)</th>
@@ -824,6 +926,13 @@ export default function MasterGovernancePage() {
                         <td className="py-3 px-4 font-mono font-bold text-amber-600 dark:text-amber-400">
                           {b.docNo}
                         </td>
+                        {user?.role === 'super_admin' && (
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                              {b.distributorName || 'Distributor'}
+                            </span>
+                          </td>
+                        )}
                         <td className="py-3 px-4 font-mono">{b.docDate}</td>
                         <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">
                           {b.partyName}
@@ -868,15 +977,37 @@ export default function MasterGovernancePage() {
                               </button>
                             </>
                           ) : b.status === 'posted' ? (
-                            <button
-                              onClick={() => handleVoidDocument(b)}
-                              className="px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-[10px] font-semibold transition inline-flex items-center"
-                            >
-                              <Ban className="w-2.5 h-2.5 mr-0.5" />
-                              <span>Void</span>
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleVoidDocument(b)}
+                                className="px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-[10px] font-semibold transition inline-flex items-center"
+                              >
+                                <Ban className="w-2.5 h-2.5 mr-0.5" />
+                                <span>Void</span>
+                              </button>
+                              {user?.role === 'super_admin' && (
+                                <button
+                                  onClick={() => handleSuperAdminDeleteDoc(b)}
+                                  className="p-1 text-red-500 hover:text-red-700 rounded transition inline-flex items-center ml-1"
+                                  title="Super-Admin Master Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </>
                           ) : (
-                            <span className="text-slate-400 italic text-[11px]">No actions</span>
+                            <>
+                              <span className="text-slate-400 italic text-[11px]">No actions</span>
+                              {user?.role === 'super_admin' && (
+                                <button
+                                  onClick={() => handleSuperAdminDeleteDoc(b)}
+                                  className="p-1 text-red-500 hover:text-red-700 rounded transition inline-flex items-center ml-1"
+                                  title="Super-Admin Master Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </>
                           )}
                         </td>
                       </tr>
@@ -916,6 +1047,27 @@ export default function MasterGovernancePage() {
               {modalError && (
                 <div className="p-3 rounded-xl bg-red-50 text-red-700 border border-red-200 text-xs">
                   {modalError}
+                </div>
+              )}
+
+              {user?.role === 'super_admin' && !editingPartyId && (
+                <div>
+                  <label className="block font-semibold mb-1 text-indigo-700 dark:text-indigo-300">
+                    🏢 Target Distributor Firm *
+                  </label>
+                  <select
+                    value={targetBusinessId}
+                    onChange={(e) => setTargetBusinessId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                  >
+                    <option value="" disabled>-- Select Distributor Firm --</option>
+                    {distributors.map((d: any) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} {d.gstin ? `(${d.gstin})` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
 
@@ -1041,6 +1193,27 @@ export default function MasterGovernancePage() {
               {modalError && (
                 <div className="p-3 rounded-xl bg-red-50 text-red-700 border border-red-200 text-xs">
                   {modalError}
+                </div>
+              )}
+
+              {user?.role === 'super_admin' && !editingItemId && (
+                <div>
+                  <label className="block font-semibold mb-1 text-indigo-700 dark:text-indigo-300">
+                    🏢 Target Distributor Firm *
+                  </label>
+                  <select
+                    value={targetBusinessId}
+                    onChange={(e) => setTargetBusinessId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                  >
+                    <option value="" disabled>-- Select Distributor Firm --</option>
+                    {distributors.map((d: any) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} {d.gstin ? `(${d.gstin})` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
 

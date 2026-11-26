@@ -5,11 +5,13 @@ import { AppShell } from '@/components/layout/AppShell';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
 import { formatPaise, isValidGSTIN } from '@bizledger/shared';
-import { Plus, Building2, Search, X } from 'lucide-react';
+import { Plus, Building2, Search, X, Trash2 } from 'lucide-react';
 
 export default function VendorsPage() {
-  const { hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [vendors, setVendors] = useState<any[]>([]);
+  const [distributors, setDistributors] = useState<any[]>([]);
+  const [targetBusinessId, setTargetBusinessId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -28,6 +30,19 @@ export default function VendorsPage() {
       setLoading(true);
       const res = await api.get('/api/v1/parties?kind=vendor');
       setVendors(res.parties || []);
+
+      if (user?.role === 'super_admin' || user?.username === 'anoopsue') {
+        try {
+          const bRes = await api.get('/api/v1/admin/businesses');
+          const list = (bRes.businesses || []).filter(
+            (b: any) => b.id !== '00000000-0000-0000-0000-000000000000'
+          );
+          setDistributors(list);
+          if (list.length > 0 && !targetBusinessId) {
+            setTargetBusinessId(list[0].id);
+          }
+        } catch {}
+      }
     } catch {}
     finally {
       setLoading(false);
@@ -36,7 +51,7 @@ export default function VendorsPage() {
 
   useEffect(() => {
     fetchVendors();
-  }, []);
+  }, [user]);
 
   const handleCreateVendor = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +63,7 @@ export default function VendorsPage() {
     try {
       const balancePaise = Math.round(parseFloat(openingBalance || '0') * 100);
       await api.post('/api/v1/parties', {
+        businessId: user?.role === 'super_admin' ? (targetBusinessId || undefined) : undefined,
         kind: 'vendor',
         name,
         gstin: gstin ? gstin.toUpperCase().trim() : null,
@@ -68,6 +84,26 @@ export default function VendorsPage() {
       fetchVendors();
     } catch (err: any) {
       alert(err.message || 'Failed to create vendor');
+    }
+  };
+
+  const handleToggleVendorStatus = async (v: any) => {
+    const newStatus = v.isActive === false ? true : false;
+    try {
+      await api.put(`/api/v1/parties/${v.id}`, { isActive: newStatus });
+      fetchVendors();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update vendor status');
+    }
+  };
+
+  const handleDeleteVendor = async (v: any) => {
+    if (!confirm(`Are you sure you want to delete ${v.name}? This will remove it from all distributor records.`)) return;
+    try {
+      await api.delete(`/api/v1/parties/${v.id}`);
+      fetchVendors();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete vendor');
     }
   };
 
@@ -127,10 +163,16 @@ export default function VendorsPage() {
               <thead className="bg-slate-50 text-slate-500 uppercase font-semibold border-b">
                 <tr>
                   <th className="py-3 px-4 whitespace-nowrap min-w-[200px]">Vendor Name</th>
+                  {user?.role === 'super_admin' && (
+                    <th className="py-3 px-4 whitespace-nowrap text-indigo-600 dark:text-indigo-400">Distributor Firm</th>
+                  )}
                   <th className="py-3 px-4 whitespace-nowrap">GSTIN</th>
                   <th className="py-3 px-4 whitespace-nowrap">Phone / Email</th>
                   <th className="py-3 px-4 whitespace-nowrap">Payment Terms</th>
                   <th className="py-3 px-4 text-right whitespace-nowrap">Payable Balance</th>
+                  {user?.role === 'super_admin' && (
+                    <th className="py-3 px-4 text-right whitespace-nowrap">Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -144,6 +186,13 @@ export default function VendorsPage() {
                         </span>
                       )}
                     </td>
+                    {user?.role === 'super_admin' && (
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                          {v.distributorName || 'Distributor'}
+                        </span>
+                      </td>
+                    )}
                     <td className="py-3 px-4 font-mono text-[11px] text-slate-600">
                       {v.gstin || 'Unregistered'}
                     </td>
@@ -155,6 +204,24 @@ export default function VendorsPage() {
                     <td className="py-3 px-4 text-right font-bold text-slate-900">
                       ₹ {formatPaise(v.currentBalance || v.openingBalance || 0)}
                     </td>
+                    {user?.role === 'super_admin' && (
+                      <td className="py-3 px-4 text-right space-x-1.5 whitespace-nowrap">
+                        <button
+                          onClick={() => handleToggleVendorStatus(v)}
+                          className="px-2 py-0.5 text-[10px] font-bold rounded border transition"
+                          title="Toggle Active/Disable"
+                        >
+                          {v.isActive === false ? 'Enable' : 'Disable'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteVendor(v)}
+                          className="p-1 text-slate-400 hover:text-red-600 rounded transition inline-flex items-center"
+                          title="Delete vendor"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -175,6 +242,27 @@ export default function VendorsPage() {
             </div>
 
             <form onSubmit={handleCreateVendor} className="p-6 space-y-3 text-xs">
+              {user?.role === 'super_admin' && (
+                <div>
+                  <label className="block font-semibold mb-1 text-indigo-700 dark:text-indigo-300">
+                    🏢 Target Distributor Firm *
+                  </label>
+                  <select
+                    value={targetBusinessId}
+                    onChange={(e) => setTargetBusinessId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                  >
+                    <option value="" disabled>-- Select Distributor Firm --</option>
+                    {distributors.map((d: any) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} {d.gstin ? `(${d.gstin})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block font-semibold mb-1">Vendor / Firm Name *</label>
                 <input

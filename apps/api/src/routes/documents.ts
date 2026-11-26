@@ -19,18 +19,23 @@ documents.use('/*', authMiddleware);
 // GET /documents - List invoices, bills, credit/debit notes
 documents.get('/', async (c) => {
   const businessId = c.get('businessId');
+  const user = c.get('user');
   const type = c.req.query('type') as DocumentType | undefined;
+  const isSuperAdmin = user.role === 'super_admin';
+  const isAll = isSuperAdmin && (!businessId || businessId === 'all' || businessId === '00000000-0000-0000-0000-000000000000');
 
-  let list = memoryStore.documents.filter((d) => d.businessId === businessId);
+  let list = isAll ? memoryStore.documents : memoryStore.documents.filter((d) => d.businessId === businessId);
   if (type) {
     list = list.filter((d) => d.docType === type);
   }
 
-  // Enrich with party details
+  // Enrich with party and distributor details
   const enriched = list.map((doc) => {
     const party = memoryStore.parties.find((p) => p.id === doc.partyId);
+    const distBiz = memoryStore.businesses.find((b) => b.id === doc.businessId);
     return {
       ...doc,
+      distributorName: distBiz?.name || 'Distributor',
       partyName: party?.name || 'Unknown Party',
       partyGstin: party?.gstin,
     };
@@ -43,6 +48,7 @@ documents.get('/', async (c) => {
 documents.post('/', async (c) => {
   const businessId = c.get('businessId');
   const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
   const body = await c.req.json();
   const parsed = createDocumentSchema.safeParse(body);
   if (!parsed.success) {
@@ -53,9 +59,14 @@ documents.post('/', async (c) => {
   const currentFy = `${new Date().getFullYear()}-${String(new Date().getFullYear() + 1).slice(-2)}`;
   const docNo = data.docNo || memoryStore.getNextDocNo(data.docType, currentFy);
 
+  // Target distributor resolution
+  const targetBusinessId = (isSuperAdmin && (body.businessId || body.targetBusinessId))
+    ? (body.businessId || body.targetBusinessId)
+    : (businessId !== 'all' ? businessId : (memoryStore.businesses[0]?.id || '11111111-1111-1111-1111-111111111111'));
+
   const newDoc = {
     id: crypto.randomUUID(),
-    businessId,
+    businessId: targetBusinessId,
     docType: data.docType,
     docNo,
     docDate: data.docDate,
@@ -71,13 +82,14 @@ documents.post('/', async (c) => {
     lines: data.lines.map((l) => ({
       id: crypto.randomUUID(),
       ...l,
+      unit: l.unit || 'PCS',
     })),
   };
 
   memoryStore.documents.push(newDoc);
 
   recordAuditLog({
-    businessId,
+    businessId: targetBusinessId,
     userId: user.id,
     action: 'CREATE_DOCUMENT',
     entity: 'documents',
@@ -88,18 +100,20 @@ documents.post('/', async (c) => {
   return c.json({ document: newDoc }, 201);
 });
 
-// PUT /documents/:id - Edit draft document (strictly rejects posted/locked documents)
+// PUT /documents/:id - Edit document (Super Admin has unrestricted power override across all distributors)
 documents.put('/:id', async (c) => {
   const businessId = c.get('businessId');
   const user = c.get('user');
   const id = c.req.param('id');
+  const isSuperAdmin = user.role === 'super_admin';
 
-  const doc = memoryStore.documents.find((d) => d.id === id && d.businessId === businessId);
+  const doc = memoryStore.documents.find((d) => d.id === id && (isSuperAdmin || d.businessId === businessId));
   if (!doc) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Document not found' } }, 404);
   }
 
-  if (doc.status === 'posted') {
+  // Non-super-admin cannot edit posted or locked documents
+  if (!isSuperAdmin && doc.status === 'posted') {
     return c.json(
       {
         error: {
@@ -112,7 +126,7 @@ documents.put('/:id', async (c) => {
     );
   }
 
-  if (doc.status === 'void') {
+  if (!isSuperAdmin && doc.status === 'void') {
     return c.json(
       {
         error: {
@@ -134,6 +148,7 @@ documents.put('/:id', async (c) => {
   if (body.taxTotal !== undefined) doc.taxTotal = body.taxTotal;
   if (body.roundOff !== undefined) doc.roundOff = body.roundOff;
   if (body.total !== undefined) doc.total = body.total;
+  if (isSuperAdmin && body.businessId) doc.businessId = body.businessId;
   if (Array.isArray(body.lines)) {
     doc.lines = body.lines.map((l: any) => ({
       id: l.id || crypto.randomUUID(),
@@ -143,9 +158,9 @@ documents.put('/:id', async (c) => {
   }
 
   recordAuditLog({
-    businessId,
+    businessId: doc.businessId,
     userId: user.id,
-    action: 'UPDATE_DOCUMENT',
+    action: isSuperAdmin ? 'SUPER_ADMIN_UPDATE_DOCUMENT' : 'UPDATE_DOCUMENT',
     entity: 'documents',
     entityId: doc.id,
     details: { docNo: doc.docNo, total: doc.total, status: doc.status },
@@ -154,19 +169,20 @@ documents.put('/:id', async (c) => {
   return c.json({ success: true, document: doc });
 });
 
-// DELETE /documents/:id - Delete draft document (strictly rejects posted/locked documents)
+// DELETE /documents/:id - Delete document (Super Admin has unrestricted authority)
 documents.delete('/:id', async (c) => {
   const businessId = c.get('businessId');
   const user = c.get('user');
   const id = c.req.param('id');
+  const isSuperAdmin = user.role === 'super_admin';
 
-  const docIdx = memoryStore.documents.findIndex((d) => d.id === id && d.businessId === businessId);
+  const docIdx = memoryStore.documents.findIndex((d) => d.id === id && (isSuperAdmin || d.businessId === businessId));
   if (docIdx === -1) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Document not found' } }, 404);
   }
 
   const doc = memoryStore.documents[docIdx];
-  if (doc.status === 'posted') {
+  if (!isSuperAdmin && doc.status === 'posted') {
     return c.json(
       {
         error: {
@@ -182,15 +198,15 @@ documents.delete('/:id', async (c) => {
   memoryStore.documents.splice(docIdx, 1);
 
   recordAuditLog({
-    businessId,
+    businessId: doc.businessId,
     userId: user.id,
-    action: 'DELETE_DOCUMENT',
+    action: isSuperAdmin ? 'SUPER_ADMIN_DELETE_DOCUMENT' : 'DELETE_DOCUMENT',
     entity: 'documents',
     entityId: doc.id,
     details: { docNo: doc.docNo },
   });
 
-  return c.json({ success: true, message: `Draft document #${doc.docNo} deleted` });
+  return c.json({ success: true, message: `Document #${doc.docNo} deleted` });
 });
 
 // POST /documents/:id/post - Post document & create balanced double-entry journal lines!
@@ -198,8 +214,9 @@ documents.post('/:id/post', async (c) => {
   const businessId = c.get('businessId');
   const user = c.get('user');
   const id = c.req.param('id');
+  const isSuperAdmin = user.role === 'super_admin';
 
-  const doc = memoryStore.documents.find((d) => d.id === id && d.businessId === businessId);
+  const doc = memoryStore.documents.find((d) => d.id === id && (isSuperAdmin || d.businessId === businessId));
   if (!doc) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Document not found' } }, 404);
   }
@@ -207,8 +224,9 @@ documents.post('/:id/post', async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: `Document is already ${doc.status}` } }, 400);
   }
 
-  // Find standard accounts
-  const findAccountByCode = (code: string) => memoryStore.accounts.find((a) => a.businessId === businessId && a.code === code);
+  // Find standard accounts for the document's distributor
+  const docBusinessId = doc.businessId;
+  const findAccountByCode = (code: string) => memoryStore.accounts.find((a) => a.businessId === docBusinessId && a.code === code);
 
   const arAccount = findAccountByCode('1030'); // Accounts Receivable
   const apAccount = findAccountByCode('2010'); // Accounts Payable
@@ -223,7 +241,7 @@ documents.post('/:id/post', async (c) => {
   const roundOffAccount = findAccountByCode('5050'); // Round Off Expense / Adjustment
 
   if (!arAccount || !apAccount || !salesAccount || !purchasesAccount) {
-    return c.json({ error: { code: 'CONFIG_ERROR', message: 'Standard system accounts not found' } }, 500);
+    return c.json({ error: { code: 'CONFIG_ERROR', message: 'Standard system accounts not found for distributor' } }, 500);
   }
 
   const lines: Array<{ accountId: string; partyId?: string | null; debit: number; credit: number }> = [];
@@ -239,11 +257,6 @@ documents.post('/:id/post', async (c) => {
   }
 
   if (doc.docType === 'sales_invoice') {
-    // Sales Invoice:
-    // Debit: Accounts Receivable (doc.total)
-    // Credit: Sales Income (doc.subtotal)
-    // Credit: Output CGST / SGST / IGST
-    // Debit/Credit: Round Off if present
     lines.push({ accountId: arAccount.id, partyId: doc.partyId, debit: doc.total, credit: 0 });
     lines.push({ accountId: salesAccount.id, debit: 0, credit: doc.subtotal });
 
@@ -253,18 +266,12 @@ documents.post('/:id/post', async (c) => {
 
     if (doc.roundOff !== 0 && roundOffAccount) {
       if (doc.roundOff > 0) {
-        // Round off increased total -> Credit Round Off Adjustment
         lines.push({ accountId: roundOffAccount.id, debit: 0, credit: doc.roundOff });
       } else {
-        // Round off decreased total -> Debit Round Off Adjustment
         lines.push({ accountId: roundOffAccount.id, debit: -doc.roundOff, credit: 0 });
       }
     }
   } else if (doc.docType === 'purchase_bill') {
-    // Purchase Bill:
-    // Debit: Purchases (doc.subtotal)
-    // Debit: Input CGST / SGST / IGST
-    // Credit: Accounts Payable (doc.total)
     lines.push({ accountId: purchasesAccount.id, debit: doc.subtotal, credit: 0 });
 
     if (totalCgst > 0 && inputCgst) lines.push({ accountId: inputCgst.id, debit: totalCgst, credit: 0 });
@@ -284,7 +291,7 @@ documents.post('/:id/post', async (c) => {
 
   // Create journal entry with strict double-entry guarantee
   const journalEntry = memoryStore.createJournalEntry({
-    businessId,
+    businessId: docBusinessId,
     entryDate: doc.docDate,
     narration: `Posting for ${doc.docType} #${doc.docNo}`,
     sourceType: doc.docType,
@@ -297,7 +304,7 @@ documents.post('/:id/post', async (c) => {
   doc.entryId = journalEntry.id;
 
   recordAuditLog({
-    businessId,
+    businessId: docBusinessId,
     userId: user.id,
     action: 'POST_DOCUMENT',
     entity: 'documents',
@@ -313,8 +320,9 @@ documents.post('/:id/void', async (c) => {
   const businessId = c.get('businessId');
   const user = c.get('user');
   const id = c.req.param('id');
+  const isSuperAdmin = user.role === 'super_admin';
 
-  const doc = memoryStore.documents.find((d) => d.id === id && d.businessId === businessId);
+  const doc = memoryStore.documents.find((d) => d.id === id && (isSuperAdmin || d.businessId === businessId));
   if (!doc) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Document not found' } }, 404);
   }
@@ -336,7 +344,7 @@ documents.post('/:id/void', async (c) => {
         credit: l.debit,
       }));
       memoryStore.createJournalEntry({
-        businessId,
+        businessId: doc.businessId,
         entryDate: new Date().toISOString().split('T')[0],
         narration: `Void reversal for ${doc.docType} #${doc.docNo}`,
         sourceType: doc.docType,
@@ -348,7 +356,7 @@ documents.post('/:id/void', async (c) => {
   }
 
   recordAuditLog({
-    businessId,
+    businessId: doc.businessId,
     userId: user.id,
     action: 'VOID_DOCUMENT',
     entity: 'documents',
@@ -362,15 +370,17 @@ documents.post('/:id/void', async (c) => {
 // GET /documents/:id/pdf-data - Full data payload ready for jsPDF rendering in the frontend
 documents.get('/:id/pdf-data', async (c) => {
   const businessId = c.get('businessId');
+  const user = c.get('user');
   const id = c.req.param('id');
+  const isSuperAdmin = user.role === 'super_admin';
 
-  const doc = memoryStore.documents.find((d) => d.id === id && d.businessId === businessId);
+  const doc = memoryStore.documents.find((d) => d.id === id && (isSuperAdmin || d.businessId === businessId));
   if (!doc) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Document not found' } }, 404);
   }
 
   const party = memoryStore.parties.find((p) => p.id === doc.partyId);
-  const currentBiz = memoryStore.businesses.find((b) => b.id === businessId) || memoryStore.business;
+  const currentBiz = memoryStore.businesses.find((b) => b.id === doc.businessId) || memoryStore.business;
 
   return c.json({
     business: currentBiz,

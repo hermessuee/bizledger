@@ -8,13 +8,16 @@ dashboard.use('/*', authMiddleware);
 
 dashboard.get('/', (c) => {
   const businessId = c.get('businessId');
+  const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
+  const isAll = isSuperAdmin && (!businessId || businessId === 'all' || businessId === '00000000-0000-0000-0000-000000000000');
 
   // Compute key KPIs
   let totalSales = 0;
   let totalPurchases = 0;
 
   for (const doc of memoryStore.documents) {
-    if (doc.businessId === businessId && doc.status === 'posted') {
+    if ((isAll || doc.businessId === businessId) && doc.status === 'posted') {
       if (doc.docType === 'sales_invoice') totalSales += doc.total;
       if (doc.docType === 'purchase_bill') totalPurchases += doc.total;
     }
@@ -24,9 +27,9 @@ dashboard.get('/', (c) => {
   let cashBankBalance = 0;
   const cashBankCodes = ['1010', '1020'];
   for (const acct of memoryStore.accounts) {
-    if (acct.businessId === businessId && cashBankCodes.includes(acct.code)) {
+    if ((isAll || acct.businessId === businessId) && cashBankCodes.includes(acct.code)) {
       for (const entry of memoryStore.journalEntries) {
-        if (entry.businessId === businessId && !entry.isVoid) {
+        if ((isAll || entry.businessId === businessId) && !entry.isVoid) {
           for (const line of entry.lines) {
             if (line.accountId === acct.id) {
               cashBankBalance += line.debit - line.credit;
@@ -40,14 +43,13 @@ dashboard.get('/', (c) => {
   // Receivables & Payables
   let receivables = 0;
   let payables = 0;
-  const arAccount = memoryStore.accounts.find((a) => a.businessId === businessId && a.code === '1030');
-  const apAccount = memoryStore.accounts.find((a) => a.businessId === businessId && a.code === '2010');
 
   for (const entry of memoryStore.journalEntries) {
-    if (entry.businessId === businessId && !entry.isVoid) {
+    if ((isAll || entry.businessId === businessId) && !entry.isVoid) {
       for (const line of entry.lines) {
-        if (arAccount && line.accountId === arAccount.id) receivables += line.debit - line.credit;
-        if (apAccount && line.accountId === apAccount.id) payables += line.credit - line.debit;
+        const acct = memoryStore.accounts.find((a) => a.id === line.accountId);
+        if (acct?.code === '1030') receivables += line.debit - line.credit;
+        if (acct?.code === '2010') payables += line.credit - line.debit;
       }
     }
   }
@@ -67,7 +69,7 @@ dashboard.get('/', (c) => {
   let pdcInHandAmount = 0;
 
   for (const chq of memoryStore.cheques) {
-    if (chq.businessId === businessId && (chq.status === 'pending' || chq.status === 'deposited')) {
+    if ((isAll || chq.businessId === businessId) && (chq.status === 'pending' || chq.status === 'deposited')) {
       if (chq.direction === 'received' && chq.chequeDate > today) {
         pdcInHandAmount += chq.amount;
       }

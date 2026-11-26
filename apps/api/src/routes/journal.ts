@@ -12,24 +12,31 @@ journal.use('/*', authMiddleware);
 // GET /journal - List journal entries
 journal.get('/', requirePermission('journal', 'view'), (c) => {
   const businessId = c.get('businessId');
-  const list = memoryStore.journalEntries
-    .filter((e) => e.businessId === businessId)
+  const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
+  const isAll = isSuperAdmin && (!businessId || businessId === 'all' || businessId === '00000000-0000-0000-0000-000000000000');
+
+  const list = (isAll ? memoryStore.journalEntries : memoryStore.journalEntries.filter((e) => e.businessId === businessId))
     .sort((a, b) => new Date(b.entryDate).getTime() - new Date(a.entryDate).getTime());
 
-  // Enrich with account and party names
-  const enriched = list.map((entry) => ({
-    ...entry,
-    lines: entry.lines.map((line) => {
-      const acct = memoryStore.accounts.find((a) => a.id === line.accountId);
-      const party = line.partyId ? memoryStore.parties.find((p) => p.id === line.partyId) : null;
-      return {
-        ...line,
-        accountName: acct?.name || 'Unknown Account',
-        accountCode: acct?.code || '',
-        partyName: party?.name,
-      };
-    }),
-  }));
+  // Enrich with account, party, and distributor names
+  const enriched = list.map((entry) => {
+    const distBiz = memoryStore.businesses.find((b) => b.id === entry.businessId);
+    return {
+      ...entry,
+      distributorName: distBiz?.name || 'Distributor',
+      lines: entry.lines.map((line) => {
+        const acct = memoryStore.accounts.find((a) => a.id === line.accountId);
+        const party = line.partyId ? memoryStore.parties.find((p) => p.id === line.partyId) : null;
+        return {
+          ...line,
+          accountName: acct?.name || 'Unknown Account',
+          accountCode: acct?.code || '',
+          partyName: party?.name,
+        };
+      }),
+    };
+  });
 
   return c.json({ entries: enriched });
 });

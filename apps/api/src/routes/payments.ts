@@ -12,16 +12,22 @@ payments.use('/*', authMiddleware);
 // GET /payments
 payments.get('/', async (c) => {
   const businessId = c.get('businessId');
+  const user = c.get('user');
   const kind = c.req.query('kind') as 'receipt' | 'payment' | undefined;
-  let list = memoryStore.payments.filter((p) => p.businessId === businessId);
+  const isSuperAdmin = user.role === 'super_admin';
+  const isAll = isSuperAdmin && (!businessId || businessId === 'all' || businessId === '00000000-0000-0000-0000-000000000000');
+
+  let list = isAll ? memoryStore.payments : memoryStore.payments.filter((p) => p.businessId === businessId);
   if (kind) {
     list = list.filter((p) => p.kind === kind);
   }
 
   const enriched = list.map((item) => {
     const party = memoryStore.parties.find((p) => p.id === item.partyId);
+    const distBiz = memoryStore.businesses.find((b) => b.id === item.businessId);
     return {
       ...item,
+      distributorName: distBiz?.name || 'Distributor',
       partyName: party?.name || 'Unknown Party',
     };
   });
@@ -33,6 +39,7 @@ payments.get('/', async (c) => {
 payments.post('/', async (c) => {
   const businessId = c.get('businessId');
   const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
   const body = await c.req.json();
   const parsed = createPaymentReceiptSchema.safeParse(body);
   if (!parsed.success) {
@@ -40,9 +47,12 @@ payments.post('/', async (c) => {
   }
 
   const data = parsed.data;
+  const targetBusinessId = (isSuperAdmin && (body.businessId || body.targetBusinessId))
+    ? (body.businessId || body.targetBusinessId)
+    : (businessId !== 'all' ? businessId : (memoryStore.businesses[0]?.id || '11111111-1111-1111-1111-111111111111'));
 
   // Determine standard accounts
-  const findAccountByCode = (code: string) => memoryStore.accounts.find((a) => a.businessId === businessId && a.code === code);
+  const findAccountByCode = (code: string) => memoryStore.accounts.find((a) => a.businessId === targetBusinessId && a.code === code);
   const arAccount = findAccountByCode('1030'); // Accounts Receivable
   const apAccount = findAccountByCode('2010'); // Accounts Payable
   const cashAccount = findAccountByCode('1010'); // Cash in Hand
@@ -54,16 +64,10 @@ payments.post('/', async (c) => {
   }
 
   if (!settlementAccountId || !arAccount || !apAccount) {
-    return c.json({ error: { code: 'CONFIG_ERROR', message: 'Required accounts missing' } }, 500);
+    return c.json({ error: { code: 'CONFIG_ERROR', message: 'Required accounts missing for distributor' } }, 500);
   }
 
   // Create balanced double-entry journal entry:
-  // If Receipt:
-  //   Debit: Bank or Cash (data.amount)
-  //   Credit: Accounts Receivable (data.amount)
-  // If Payment:
-  //   Debit: Accounts Payable (data.amount)
-  //   Credit: Bank or Cash (data.amount)
   const lines: Array<{ accountId: string; partyId?: string | null; debit: number; credit: number }> = [];
 
   if (data.kind === 'receipt') {
@@ -75,7 +79,7 @@ payments.post('/', async (c) => {
   }
 
   const journalEntry = memoryStore.createJournalEntry({
-    businessId,
+    businessId: targetBusinessId,
     entryDate: data.payDate,
     narration: `${data.kind === 'receipt' ? 'Receipt' : 'Payment'} via ${data.mode.toUpperCase()}${data.reference ? ' Ref: ' + data.reference : ''}`,
     sourceType: data.kind,
@@ -85,7 +89,7 @@ payments.post('/', async (c) => {
 
   const newPayment = {
     id: crypto.randomUUID(),
-    businessId,
+    businessId: targetBusinessId,
     kind: data.kind,
     partyId: data.partyId,
     payDate: data.payDate,
@@ -111,7 +115,7 @@ payments.post('/', async (c) => {
   memoryStore.payments.push(newPayment);
 
   recordAuditLog({
-    businessId,
+    businessId: targetBusinessId,
     userId: user.id,
     action: `RECORD_${data.kind.toUpperCase()}`,
     entity: 'payments',
@@ -120,6 +124,32 @@ payments.post('/', async (c) => {
   });
 
   return c.json({ payment: newPayment, journalEntry }, 201);
+});
+
+// DELETE /payments/:id - Super Admin / Owner deletion
+payments.delete('/:id', async (c) => {
+  const businessId = c.get('businessId');
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const isSuperAdmin = user.role === 'super_admin';
+
+  const idx = memoryStore.payments.findIndex((p) => p.id === id && (isSuperAdmin || p.businessId === businessId));
+  if (idx === -1) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Payment record not found' } }, 404);
+  }
+
+  const deleted = memoryStore.payments.splice(idx, 1)[0];
+
+  recordAuditLog({
+    businessId: deleted.businessId,
+    userId: user.id,
+    action: isSuperAdmin ? 'SUPER_ADMIN_DELETE_PAYMENT' : 'DELETE_PAYMENT',
+    entity: 'payments',
+    entityId: id,
+    details: { kind: deleted.kind, amount: deleted.amount },
+  });
+
+  return c.json({ success: true, message: 'Payment entry removed' });
 });
 
 export { payments as paymentRoutes };

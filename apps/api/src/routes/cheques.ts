@@ -92,13 +92,19 @@ cheques.get('/alerts', requirePermission('cheques', 'view'), (c) => {
 // GET /cheques - Cheque register with filters
 cheques.get('/', requirePermission('cheques', 'view'), (c) => {
   const businessId = c.get('businessId');
-  checkAndFlagStaleCheques(businessId);
+  const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
+  const isAll = isSuperAdmin && (!businessId || businessId === 'all' || businessId === '00000000-0000-0000-0000-000000000000');
+
+  if (businessId && businessId !== 'all') {
+    checkAndFlagStaleCheques(businessId);
+  }
 
   const direction = c.req.query('direction');
   const status = c.req.query('status');
   const partyId = c.req.query('partyId');
 
-  let list = memoryStore.cheques.filter((chq) => chq.businessId === businessId);
+  let list = isAll ? memoryStore.cheques : memoryStore.cheques.filter((chq) => chq.businessId === businessId);
   if (direction) {
     list = list.filter((chq) => chq.direction === direction);
   }
@@ -114,8 +120,10 @@ cheques.get('/', requirePermission('cheques', 'view'), (c) => {
 
   const enriched = list.map((chq) => {
     const party = memoryStore.parties.find((p) => p.id === chq.partyId);
+    const distBiz = memoryStore.businesses.find((b) => b.id === chq.businessId);
     return {
       ...chq,
+      distributorName: distBiz?.name || 'Distributor',
       partyName: party?.name || 'Unknown Party',
     };
   });
@@ -127,6 +135,7 @@ cheques.get('/', requirePermission('cheques', 'view'), (c) => {
 cheques.post('/', requirePermission('cheques', 'create'), async (c) => {
   const businessId = c.get('businessId');
   const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
   const body = await c.req.json();
   const parsed = createChequeSchema.safeParse(body);
   if (!parsed.success) {
@@ -134,11 +143,15 @@ cheques.post('/', requirePermission('cheques', 'create'), async (c) => {
   }
 
   const data = parsed.data;
-  const findAccountByCode = (code: string) => memoryStore.accounts.find((a) => a.businessId === businessId && a.code === code);
+  const targetBusinessId = (isSuperAdmin && (body.businessId || body.targetBusinessId))
+    ? (body.businessId || body.targetBusinessId)
+    : (businessId !== 'all' ? businessId : (memoryStore.businesses[0]?.id || '11111111-1111-1111-1111-111111111111'));
+
+  const findAccountByCode = (code: string) => memoryStore.accounts.find((a) => a.businessId === targetBusinessId && a.code === code);
 
   const newCheque: ChequeItem = {
     id: crypto.randomUUID(),
-    businessId,
+    businessId: targetBusinessId,
     direction: data.direction,
     partyId: data.partyId,
     chequeNo: data.chequeNo,
@@ -351,6 +364,32 @@ cheques.post('/:id/snooze', requirePermission('cheques', 'edit'), async (c) => {
   });
 
   return c.json({ success: true, cheque: chq });
+});
+
+// DELETE /cheques/:id - Super Admin / Owner deletion
+cheques.delete('/:id', async (c) => {
+  const businessId = c.get('businessId');
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const isSuperAdmin = user.role === 'super_admin';
+
+  const idx = memoryStore.cheques.findIndex((ch) => ch.id === id && (isSuperAdmin || ch.businessId === businessId));
+  if (idx === -1) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Cheque not found' } }, 404);
+  }
+
+  const deleted = memoryStore.cheques.splice(idx, 1)[0];
+
+  recordAuditLog({
+    businessId: deleted.businessId,
+    userId: user.id,
+    action: isSuperAdmin ? 'SUPER_ADMIN_DELETE_CHEQUE' : 'DELETE_CHEQUE',
+    entity: 'cheques',
+    entityId: id,
+    details: { chequeNo: deleted.chequeNo },
+  });
+
+  return c.json({ success: true, message: 'Cheque removed successfully' });
 });
 
 export { cheques as chequeRoutes };

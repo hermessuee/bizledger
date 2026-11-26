@@ -223,10 +223,22 @@ export function AppShell({
         </div>
 
         {/* Business Badge */}
-        <div className="px-5 py-3 bg-slate-850/60 border-b border-slate-800/80 text-xs">
-          <p className="font-semibold text-slate-200 truncate">{business?.name || 'My Business'}</p>
-          <p className="text-[11px] text-slate-400 truncate">GSTIN: {business?.gstin || 'Not Configured'}</p>
-        </div>
+        {user.role === 'super_admin' ? (
+          <div className="px-5 py-3 bg-amber-950/30 border-b border-amber-500/30 text-xs">
+            <div className="flex items-center space-x-1.5 text-amber-400 font-bold mb-0.5">
+              <ShieldAlert className="w-3.5 h-3.5" />
+              <span>Platform Super-Admin</span>
+            </div>
+            <p className="text-[11px] text-slate-300 font-medium truncate">
+              {business?.id && business.id !== 'all' ? `Distributor: ${business.name}` : '🌐 All Distributors (Master View)'}
+            </p>
+          </div>
+        ) : (
+          <div className="px-5 py-3 bg-slate-850/60 border-b border-slate-800/80 text-xs">
+            <p className="font-semibold text-slate-200 truncate">{business?.name || 'My Business'}</p>
+            <p className="text-[11px] text-slate-400 truncate">GSTIN: {business?.gstin || 'Not Configured'}</p>
+          </div>
+        )}
 
         {/* Navigation list */}
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
@@ -312,31 +324,25 @@ export function AppShell({
             <div className="flex items-center space-x-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
               {user.role === 'super_admin' ? (
                 <div className="flex items-center space-x-2">
-                  <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                    ⚡ Super-Admin Context:
+                  <span className="hidden sm:inline-block px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300">
+                    ⚡ Managing Distributor:
                   </span>
                   <select
-                    value={
-                      business?.id && business.id !== '00000000-0000-0000-0000-000000000000'
-                        ? business.id
-                        : '00000000-0000-0000-0000-000000000000'
-                    }
+                    value={business?.id && business.id !== 'all' ? business.id : 'all'}
                     onChange={async (e) => {
                       const targetId = e.target.value;
-                      await switchBusiness(targetId === '00000000-0000-0000-0000-000000000000' ? null : targetId);
+                      await switchBusiness(targetId === 'all' ? null : targetId);
                     }}
-                    className="text-xs font-bold px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer shadow-sm max-w-[220px] sm:max-w-none truncate"
+                    className="text-xs font-bold px-3 py-1.5 rounded-xl border border-amber-400/60 bg-amber-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer shadow-sm max-w-[260px] sm:max-w-none truncate"
                   >
-                    <option value="00000000-0000-0000-0000-000000000000">
-                      🌐 Central Platform Administration (Global)
+                    <option value="all">
+                      🌐 All Distributors (Global Master View)
                     </option>
-                    {adminBusinesses
-                      .filter((b) => b.id !== '00000000-0000-0000-0000-000000000000')
-                      .map((b) => (
-                        <option key={b.id} value={b.id}>
-                          🏢 {b.name}
-                        </option>
-                      ))}
+                    {adminBusinesses.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        🏢 {b.name} ({b.gstin || 'No GSTIN'})
+                      </option>
+                    ))}
                   </select>
                 </div>
               ) : (
@@ -413,23 +419,33 @@ export function AppShell({
           </div>
         </header>
 
-        {/* Super Admin Operating Context Banner */}
-        {user.role === 'super_admin' && business?.id && business.id !== '00000000-0000-0000-0000-000000000000' && (
-          <div className="bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 px-4 sm:px-6 py-2 flex items-center justify-between text-xs font-bold shadow-sm border-b border-amber-600/30">
-            <div className="flex items-center space-x-2 truncate">
-              <span className="px-2 py-0.5 bg-slate-950 text-amber-400 rounded uppercase tracking-wider text-[10px] font-extrabold flex-shrink-0">
-                Super-Admin Power Mode
+        {/* Global Super-Admin Context Banner */}
+        {user.role === 'super_admin' && (
+          <div className="bg-gradient-to-r from-amber-500/10 via-yellow-500/10 to-amber-500/10 border-b border-amber-400/30 px-4 py-2 text-xs flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 font-extrabold text-[10px] tracking-wide uppercase">
+                Master Control
               </span>
-              <span className="truncate">
-                Operating inside <strong className="underline font-extrabold">{business.name}</strong> ledger. Full add, edit, and delete power active.
+              <span className="text-slate-700 dark:text-slate-200">
+                {business?.id && business.id !== 'all' ? (
+                  <>
+                    Operating in distributor firm: <strong className="text-slate-900 dark:text-white font-bold">{business.name}</strong> ({business.gstin || 'No GSTIN'}) — Full master authority to edit, delete & manage records.
+                  </>
+                ) : (
+                  <>
+                    Viewing <strong className="text-slate-900 dark:text-white font-bold">All Distributors Consolidated Data</strong> — you can view, edit, delete, or disable any customer, invoice, or entry across any firm.
+                  </>
+                )}
               </span>
             </div>
-            <button
-              onClick={() => switchBusiness(null)}
-              className="ml-3 px-3 py-1 bg-slate-950 hover:bg-slate-800 text-white rounded-lg text-[11px] font-bold transition flex-shrink-0 shadow-sm"
-            >
-              Return to Global Admin
-            </button>
+            {business?.id && business.id !== 'all' && (
+              <button
+                onClick={() => switchBusiness('all')}
+                className="px-2.5 py-1 text-[11px] font-bold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 text-slate-700 dark:text-slate-200 shadow-xs transition cursor-pointer"
+              >
+                View All Distributors
+              </button>
+            )}
           </div>
         )}
 

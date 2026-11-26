@@ -59,11 +59,30 @@ export const authMiddleware: MiddlewareHandler<AppContext> = async (c, next) => 
 
   // Dynamic context switching for Super Admin power user
   const requestedBusinessId = c.req.header('x-business-id') || c.req.query('businessId');
-  const activeBusinessId = (user.role === 'super_admin' && requestedBusinessId && requestedBusinessId !== 'all')
-    ? requestedBusinessId
-    : user.businessId;
+  const isSuperAdmin = user.role === 'super_admin';
+  
+  let activeBusinessId = user.businessId;
+  let currentBiz: any = null;
 
-  const currentBiz = memoryStore.businesses.find((b) => b.id === activeBusinessId) || memoryStore.business;
+  if (isSuperAdmin) {
+    if (requestedBusinessId && requestedBusinessId !== 'all' && requestedBusinessId !== '00000000-0000-0000-0000-000000000000') {
+      activeBusinessId = requestedBusinessId;
+      currentBiz = memoryStore.businesses.find((b) => b.id === activeBusinessId) || memoryStore.business;
+    } else {
+      activeBusinessId = 'all';
+      currentBiz = {
+        id: 'all',
+        name: 'All Distributors (Global Master View)',
+        gstin: 'Consolidated View',
+        stateCode: '00',
+        currency: 'INR',
+        status: 'active',
+        enabledMenus: memoryStore.business.enabledMenus,
+      };
+    }
+  } else {
+    currentBiz = memoryStore.businesses.find((b) => b.id === activeBusinessId) || memoryStore.business;
+  }
 
   c.set('user', {
     id: user.id,

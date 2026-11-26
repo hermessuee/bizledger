@@ -104,7 +104,21 @@ auth.post('/login', async (c) => {
     details: { username: user.username },
   });
 
-  const business = memoryStore.businesses.find((b) => b.id === user.businessId) || memoryStore.business;
+  const business =
+    user.role === 'super_admin' && (user.businessId === 'all' || !user.businessId)
+      ? {
+          id: 'all',
+          name: 'All Distributors (Global Master View)',
+          gstin: '',
+          stateCode: '00',
+          address: 'Consolidated Global View Across All Distributors',
+          currency: 'INR',
+          fyStartMonth: 4,
+          status: 'active' as const,
+          enabledMenus: memoryStore.menus,
+          createdAt: new Date().toISOString(),
+        }
+      : memoryStore.businesses.find((b) => b.id === user.businessId) || memoryStore.business;
 
   return c.json({
     accessToken,
@@ -266,7 +280,21 @@ auth.use('/*', authMiddleware);
 // GET /auth/me
 auth.get('/me', (c) => {
   const user = c.get('user');
-  const business = memoryStore.businesses.find((b) => b.id === user.businessId) || memoryStore.business;
+  const business =
+    user.role === 'super_admin' && (user.businessId === 'all' || !user.businessId)
+      ? {
+          id: 'all',
+          name: 'All Distributors (Global Master View)',
+          gstin: '',
+          stateCode: '00',
+          address: 'Consolidated Global View Across All Distributors',
+          currency: 'INR',
+          fyStartMonth: 4,
+          status: 'active' as const,
+          enabledMenus: memoryStore.menus,
+          createdAt: new Date().toISOString(),
+        }
+      : memoryStore.businesses.find((b) => b.id === user.businessId) || memoryStore.business;
   return c.json({ user, business });
 });
 

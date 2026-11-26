@@ -18,19 +18,6 @@ import { hashPassword, verifyPassword, generateRandomHex } from './crypto';
 export class MemoryStore {
   businesses: Business[] = [
     {
-      id: '00000000-0000-0000-0000-000000000000',
-      name: 'Hermes Central Platform Administration',
-      gstin: '00AAAAA0000A1Z5',
-      stateCode: '00',
-      address: 'Hermes Platform Cloud Headquarters',
-      currency: 'INR',
-      fyStartMonth: 4,
-      status: 'active',
-      enabledMenus: [...MENU_KEYS],
-      settings: {},
-      createdAt: new Date().toISOString(),
-    },
-    {
       id: '11111111-1111-1111-1111-111111111111',
       name: 'Apex Trading & Services Pvt Ltd',
       gstin: '27AAPCA1234M1Z5',
@@ -76,6 +63,7 @@ export class MemoryStore {
         'cheques',
         'gst',
         'bulk_upload',
+        'master_governance',
         'settings',
         'users',
       ],
@@ -89,7 +77,7 @@ export class MemoryStore {
   ];
 
   get business() {
-    return this.businesses.find((b) => b.id === '11111111-1111-1111-1111-111111111111') || this.businesses[0];
+    return this.businesses[0];
   }
 
   users: Array<{
@@ -230,7 +218,7 @@ export class MemoryStore {
     // 0. Master Super Administrator (Platform Owner: anoopsue)
     this.users.push({
       id: '00000000-0000-0000-0000-000000000001',
-      businessId: '00000000-0000-0000-0000-000000000000',
+      businessId: 'all',
       name: 'Platform Super Administrator (anoopsue)',
       email: 'anoopsue@bizledger.in',
       username: 'anoopsue',

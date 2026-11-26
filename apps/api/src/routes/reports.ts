@@ -11,7 +11,11 @@ reports.use('/*', authMiddleware);
 // GET /reports/trial-balance
 reports.get('/trial-balance', requirePermission('reports', 'view'), (c) => {
   const businessId = c.get('businessId');
-  const accounts = memoryStore.accounts.filter((a) => a.businessId === businessId);
+  const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
+  const isAll = isSuperAdmin && (!businessId || businessId === 'all' || businessId === '00000000-0000-0000-0000-000000000000');
+
+  const accounts = isAll ? memoryStore.accounts : memoryStore.accounts.filter((a) => a.businessId === businessId);
 
   // Compute debit and credit sums per account
   const accountBalances: Record<string, { debit: number; credit: number }> = {};
@@ -20,7 +24,7 @@ reports.get('/trial-balance', requirePermission('reports', 'view'), (c) => {
   }
 
   for (const entry of memoryStore.journalEntries) {
-    if (entry.businessId === businessId && !entry.isVoid) {
+    if ((isAll || entry.businessId === businessId) && !entry.isVoid) {
       for (const line of entry.lines) {
         if (accountBalances[line.accountId]) {
           accountBalances[line.accountId].debit += line.debit;
@@ -78,7 +82,11 @@ reports.get('/trial-balance', requirePermission('reports', 'view'), (c) => {
 // GET /reports/profit-loss
 reports.get('/profit-loss', requirePermission('reports', 'view'), (c) => {
   const businessId = c.get('businessId');
-  const accounts = memoryStore.accounts.filter((a) => a.businessId === businessId);
+  const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
+  const isAll = isSuperAdmin && (!businessId || businessId === 'all' || businessId === '00000000-0000-0000-0000-000000000000');
+
+  const accounts = isAll ? memoryStore.accounts : memoryStore.accounts.filter((a) => a.businessId === businessId);
 
   let totalIncome = 0;
   let totalExpense = 0;
@@ -92,7 +100,7 @@ reports.get('/profit-loss', requirePermission('reports', 'view'), (c) => {
     let debit = 0;
     let credit = 0;
     for (const entry of memoryStore.journalEntries) {
-      if (entry.businessId === businessId && !entry.isVoid) {
+      if ((isAll || entry.businessId === businessId) && !entry.isVoid) {
         for (const line of entry.lines) {
           if (line.accountId === acct.id) {
             debit += line.debit;
@@ -127,7 +135,11 @@ reports.get('/profit-loss', requirePermission('reports', 'view'), (c) => {
 // GET /reports/balance-sheet
 reports.get('/balance-sheet', requirePermission('reports', 'view'), (c) => {
   const businessId = c.get('businessId');
-  const accounts = memoryStore.accounts.filter((a) => a.businessId === businessId);
+  const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
+  const isAll = isSuperAdmin && (!businessId || businessId === 'all' || businessId === '00000000-0000-0000-0000-000000000000');
+
+  const accounts = isAll ? memoryStore.accounts : memoryStore.accounts.filter((a) => a.businessId === businessId);
 
   let totalAssets = 0;
   let totalLiabilities = 0;
@@ -141,7 +153,7 @@ reports.get('/balance-sheet', requirePermission('reports', 'view'), (c) => {
     let debit = 0;
     let credit = 0;
     for (const entry of memoryStore.journalEntries) {
-      if (entry.businessId === businessId && !entry.isVoid) {
+      if ((isAll || entry.businessId === businessId) && !entry.isVoid) {
         for (const line of entry.lines) {
           if (line.accountId === acct.id) {
             debit += line.debit;
@@ -172,7 +184,7 @@ reports.get('/balance-sheet', requirePermission('reports', 'view'), (c) => {
   for (const acct of accounts) {
     if (acct.type === 'income' || acct.type === 'expense') {
       for (const entry of memoryStore.journalEntries) {
-        if (entry.businessId === businessId && !entry.isVoid) {
+        if ((isAll || entry.businessId === businessId) && !entry.isVoid) {
           for (const line of entry.lines) {
             if (line.accountId === acct.id) {
               if (acct.type === 'income') pnlIncome += line.credit - line.debit;

@@ -31,10 +31,12 @@ import {
 } from 'lucide-react';
 
 export default function InvoicesPage() {
-  const { business, hasPermission } = useAuth();
+  const { business, user, hasPermission } = useAuth();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [parties, setParties] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
+  const [distributors, setDistributors] = useState<any[]>([]);
+  const [targetBusinessId, setTargetBusinessId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -79,13 +81,26 @@ export default function InvoicesPage() {
       ]);
       setParties(pRes.parties || []);
       setItems(iRes.items || []);
+
+      if (user?.role === 'super_admin' || user?.username === 'anoopsue') {
+        try {
+          const bRes = await api.get('/api/v1/admin/businesses');
+          const list = (bRes.businesses || []).filter(
+            (b: any) => b.id !== '00000000-0000-0000-0000-000000000000'
+          );
+          setDistributors(list);
+          if (list.length > 0 && !targetBusinessId) {
+            setTargetBusinessId(list[0].id);
+          }
+        } catch {}
+      }
     } catch {}
   };
 
   useEffect(() => {
     fetchInvoices();
     fetchMasters();
-  }, []);
+  }, [user]);
 
   const handlePartySelect = (id: string) => {
     setPartyId(id);
@@ -172,7 +187,7 @@ export default function InvoicesPage() {
   };
 
   const handleOpenEdit = (doc: any) => {
-    if (doc.status === 'posted') {
+    if (doc.status === 'posted' && user?.role !== 'super_admin') {
       alert('⚠️ This invoice is Saved & Locked. Posted accounting entries cannot be modified to preserve ledger integrity.');
       return;
     }
@@ -182,6 +197,7 @@ export default function InvoicesPage() {
     setDocDate(doc.docDate || new Date().toISOString().split('T')[0]);
     setDueDate(doc.dueDate || '');
     setPlaceOfSupply(doc.placeOfSupply || business?.stateCode || '27');
+    setTargetBusinessId(doc.businessId || '');
     if (doc.lines && doc.lines.length > 0) {
       setLines(
         doc.lines.map((l: any) => ({
@@ -218,7 +234,8 @@ export default function InvoicesPage() {
       setSubmitting(true);
       setErrorMsg(null);
 
-      const payload = {
+      const payload: any = {
+        businessId: user?.role === 'super_admin' ? (targetBusinessId || undefined) : undefined,
         docType: 'sales_invoice',
         docNo: docNo.trim() || undefined,
         docDate,
@@ -274,7 +291,8 @@ export default function InvoicesPage() {
   };
 
   const handleDeleteDraft = async (id: string, number: string) => {
-    if (!confirm(`Delete draft invoice #${number}? This will permanently remove this draft.`)) return;
+    const isOverride = user?.role === 'super_admin';
+    if (!confirm(isOverride ? `⚠️ Super-Admin Master Override:\nPermanently delete invoice #${number}? This will delete the entry across all distributor accounting ledgers.` : `Delete draft invoice #${number}? This will permanently remove this draft.`)) return;
     try {
       await api.delete(`/api/v1/documents/${id}`);
       fetchInvoices();
@@ -378,6 +396,9 @@ export default function InvoicesPage() {
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 border-b uppercase font-semibold">
                 <tr>
                   <th className="py-3 px-4 whitespace-nowrap">Invoice #</th>
+                  {user?.role === 'super_admin' && (
+                    <th className="py-3 px-4 whitespace-nowrap text-indigo-600 dark:text-indigo-400">Distributor Firm</th>
+                  )}
                   <th className="py-3 px-4 whitespace-nowrap">Date</th>
                   <th className="py-3 px-4 whitespace-nowrap min-w-[180px]">Customer</th>
                   <th className="py-3 px-4 whitespace-nowrap">Items & Units</th>
@@ -391,13 +412,13 @@ export default function InvoicesPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="py-8 text-center text-slate-400">
+                    <td colSpan={user?.role === 'super_admin' ? 10 : 9} className="py-8 text-center text-slate-400">
                       Loading invoices...
                     </td>
                   </tr>
                 ) : filteredInvoices.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-8 text-center text-slate-400">
+                    <td colSpan={user?.role === 'super_admin' ? 10 : 9} className="py-8 text-center text-slate-400">
                       No invoices found. Click 'Create Tax Invoice' to generate one.
                     </td>
                   </tr>
@@ -407,6 +428,13 @@ export default function InvoicesPage() {
                       <td className="py-3 px-4 font-mono font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap">
                         {inv.docNo}
                       </td>
+                      {user?.role === 'super_admin' && (
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                            {inv.distributorName || 'Distributor'}
+                          </span>
+                        </td>
+                      )}
                       <td className="py-3 px-4 font-mono whitespace-nowrap">{inv.docDate}</td>
                       <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">
                         {inv.partyName}
@@ -487,7 +515,7 @@ export default function InvoicesPage() {
                             </button>
                           </>
                         ) : inv.status === 'posted' ? (
-                          <>
+                          <div className="inline-flex items-center space-x-1">
                             <button
                               onClick={() => handleDownloadPdf(inv.id)}
                               className="p-1 text-slate-400 hover:text-blue-600 rounded transition"
@@ -510,9 +538,39 @@ export default function InvoicesPage() {
                               <Ban className="w-2.5 h-2.5 mr-0.5" />
                               <span>Void</span>
                             </button>
-                          </>
+                            {user?.role === 'super_admin' && (
+                              <>
+                                <button
+                                  onClick={() => handleOpenEdit(inv)}
+                                  className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg text-[10px] font-bold shadow-xs transition inline-flex items-center space-x-1"
+                                  title="Super Admin Override Edit"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteDraft(inv.id, inv.docNo)}
+                                  className="p-1 text-slate-400 hover:text-red-600 rounded transition inline-flex items-center"
+                                  title="Super Admin Override Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
+                          </div>
                         ) : (
-                          <span className="text-[11px] text-slate-400 italic">No actions</span>
+                          <div className="inline-flex items-center space-x-1">
+                            <span className="text-[11px] text-slate-400 italic">Voided</span>
+                            {user?.role === 'super_admin' && (
+                              <button
+                                onClick={() => handleDeleteDraft(inv.id, inv.docNo)}
+                                className="p-1 text-slate-400 hover:text-red-600 rounded transition inline-flex items-center ml-1"
+                                title="Super Admin Override Delete"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -577,6 +635,27 @@ export default function InvoicesPage() {
 
               {/* Customer & Header */}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60">
+                {user?.role === 'super_admin' && !editingDocId && (
+                  <div className="sm:col-span-4 bg-indigo-50/70 dark:bg-indigo-950/40 p-3 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                    <label className="block font-bold text-indigo-900 dark:text-indigo-300 mb-1">
+                      🏢 Target Distributor Firm (Super-Admin Master Scope) *
+                    </label>
+                    <select
+                      value={targetBusinessId}
+                      onChange={(e) => setTargetBusinessId(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    >
+                      <option value="" disabled>-- Select Distributor Firm --</option>
+                      {distributors.map((d: any) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name} {d.gstin ? `(${d.gstin})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="sm:col-span-2">
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Customer *

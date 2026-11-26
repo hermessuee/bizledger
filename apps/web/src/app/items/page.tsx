@@ -4,12 +4,14 @@ import React, { useState, useEffect } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
-import { formatPaise, GST_RATES } from '@bizledger/shared';
-import { Plus, Package, Search, X } from 'lucide-react';
+import { formatPaise, GST_RATES, ITEM_UNITS } from '@bizledger/shared';
+import { Plus, Package, Search, X, Trash2 } from 'lucide-react';
 
 export default function ItemsPage() {
-  const { hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [items, setItems] = useState<any[]>([]);
+  const [distributors, setDistributors] = useState<any[]>([]);
+  const [targetBusinessId, setTargetBusinessId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -17,7 +19,7 @@ export default function ItemsPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [name, setName] = useState('');
   const [hsnSac, setHsnSac] = useState('');
-  const [unit, setUnit] = useState('Nos');
+  const [unit, setUnit] = useState('PCS');
   const [salePrice, setSalePrice] = useState('0');
   const [purchasePrice, setPurchasePrice] = useState('0');
   const [gstRate, setGstRate] = useState(18);
@@ -29,6 +31,19 @@ export default function ItemsPage() {
       setLoading(true);
       const res = await api.get('/api/v1/items');
       setItems(res.items || []);
+
+      if (user?.role === 'super_admin' || user?.username === 'anoopsue') {
+        try {
+          const bRes = await api.get('/api/v1/admin/businesses');
+          const list = (bRes.businesses || []).filter(
+            (b: any) => b.id !== '00000000-0000-0000-0000-000000000000'
+          );
+          setDistributors(list);
+          if (list.length > 0 && !targetBusinessId) {
+            setTargetBusinessId(list[0].id);
+          }
+        } catch {}
+      }
     } catch {}
     finally {
       setLoading(false);
@@ -37,12 +52,13 @@ export default function ItemsPage() {
 
   useEffect(() => {
     fetchItems();
-  }, []);
+  }, [user]);
 
   const handleCreateItem = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await api.post('/api/v1/items', {
+        businessId: user?.role === 'super_admin' ? (targetBusinessId || undefined) : undefined,
         name,
         hsnSac: hsnSac || null,
         unit,
@@ -61,6 +77,26 @@ export default function ItemsPage() {
       fetchItems();
     } catch (err: any) {
       alert(err.message || 'Failed to create item');
+    }
+  };
+
+  const handleToggleItemStatus = async (item: any) => {
+    const newStatus = item.isActive === false ? true : false;
+    try {
+      await api.put(`/api/v1/items/${item.id}`, { isActive: newStatus });
+      fetchItems();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update item status');
+    }
+  };
+
+  const handleDeleteItem = async (item: any) => {
+    if (!confirm(`Are you sure you want to delete ${item.name}? This will remove it from all distributor records.`)) return;
+    try {
+      await api.delete(`/api/v1/items/${item.id}`);
+      fetchItems();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete item');
     }
   };
 
@@ -112,22 +148,35 @@ export default function ItemsPage() {
         {/* Table */}
         <div className="bg-white dark:bg-slate-900 rounded-xl border shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[850px]">
               <thead className="bg-slate-50 text-slate-500 uppercase font-semibold border-b">
                 <tr>
                   <th className="py-3 px-4">Item / Service Name</th>
+                  {user?.role === 'super_admin' && (
+                    <th className="py-3 px-4 text-indigo-600 dark:text-indigo-400">Distributor Firm</th>
+                  )}
                   <th className="py-3 px-4">HSN/SAC</th>
                   <th className="py-3 px-4">Unit</th>
                   <th className="py-3 px-4 text-right">Sale Price (₹)</th>
                   <th className="py-3 px-4 text-right">Purchase Price (₹)</th>
                   <th className="py-3 px-4 text-center">GST Rate</th>
                   <th className="py-3 px-4 text-right">Stock Qty</th>
+                  {user?.role === 'super_admin' && (
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {filtered.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50">
                     <td className="py-3 px-4 font-semibold text-slate-900">{item.name}</td>
+                    {user?.role === 'super_admin' && (
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                          {item.distributorName || 'Distributor'}
+                        </span>
+                      </td>
+                    )}
                     <td className="py-3 px-4 font-mono text-[11px] text-slate-600">
                       {item.hsnSac || '-'}
                     </td>
@@ -150,6 +199,24 @@ export default function ItemsPage() {
                         <span className="text-slate-400">N/A</span>
                       )}
                     </td>
+                    {user?.role === 'super_admin' && (
+                      <td className="py-3 px-4 text-right space-x-1.5 whitespace-nowrap">
+                        <button
+                          onClick={() => handleToggleItemStatus(item)}
+                          className="px-2 py-0.5 text-[10px] font-bold rounded border transition"
+                          title="Toggle Active/Disable"
+                        >
+                          {item.isActive === false ? 'Enable' : 'Disable'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteItem(item)}
+                          className="p-1 text-slate-400 hover:text-red-600 rounded transition inline-flex items-center"
+                          title="Delete item"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -170,6 +237,27 @@ export default function ItemsPage() {
             </div>
 
             <form onSubmit={handleCreateItem} className="p-6 space-y-3 text-xs">
+              {user?.role === 'super_admin' && (
+                <div>
+                  <label className="block font-semibold mb-1 text-indigo-700 dark:text-indigo-300">
+                    🏢 Target Distributor Firm *
+                  </label>
+                  <select
+                    value={targetBusinessId}
+                    onChange={(e) => setTargetBusinessId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                  >
+                    <option value="" disabled>-- Select Distributor Firm --</option>
+                    {distributors.map((d: any) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} {d.gstin ? `(${d.gstin})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block font-semibold mb-1">Item / Service Name *</label>
                 <input
@@ -194,18 +282,17 @@ export default function ItemsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Unit of Measurement</label>
+                  <label className="block font-semibold mb-1">Unit of Measurement *</label>
                   <select
                     value={unit}
                     onChange={(e) => setUnit(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg outline-none bg-white"
+                    className="w-full px-3 py-2 border rounded-lg outline-none bg-amber-50/50 dark:bg-slate-800 font-bold text-amber-900 dark:text-amber-300"
                   >
-                    <option value="Nos">Nos (Numbers)</option>
-                    <option value="Hours">Hours</option>
-                    <option value="Months">Months</option>
-                    <option value="Kgs">Kgs (Kilograms)</option>
-                    <option value="Meters">Meters</option>
-                    <option value="Boxes">Boxes</option>
+                    {ITEM_UNITS.map((u) => (
+                      <option key={u} value={u}>
+                        {u} (Unit)
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

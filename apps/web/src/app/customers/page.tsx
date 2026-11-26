@@ -5,11 +5,13 @@ import { AppShell } from '@/components/layout/AppShell';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
 import { formatPaise, isValidGSTIN } from '@bizledger/shared';
-import { Plus, Users, Search, X, Phone, Mail, MapPin } from 'lucide-react';
+import { Plus, Users, Search, X, Phone, Mail, MapPin, Trash2, Power } from 'lucide-react';
 
 export default function CustomersPage() {
-  const { hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [customers, setCustomers] = useState<any[]>([]);
+  const [distributors, setDistributors] = useState<any[]>([]);
+  const [targetBusinessId, setTargetBusinessId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -28,6 +30,19 @@ export default function CustomersPage() {
       setLoading(true);
       const res = await api.get('/api/v1/parties?kind=customer');
       setCustomers(res.parties || []);
+
+      if (user?.role === 'super_admin' || user?.username === 'anoopsue') {
+        try {
+          const bRes = await api.get('/api/v1/admin/businesses');
+          const list = (bRes.businesses || []).filter(
+            (b: any) => b.id !== '00000000-0000-0000-0000-000000000000'
+          );
+          setDistributors(list);
+          if (list.length > 0 && !targetBusinessId) {
+            setTargetBusinessId(list[0].id);
+          }
+        } catch {}
+      }
     } catch {}
     finally {
       setLoading(false);
@@ -36,7 +51,7 @@ export default function CustomersPage() {
 
   useEffect(() => {
     fetchCustomers();
-  }, []);
+  }, [user]);
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +63,7 @@ export default function CustomersPage() {
     try {
       const balancePaise = Math.round(parseFloat(openingBalance || '0') * 100);
       await api.post('/api/v1/parties', {
+        businessId: user?.role === 'super_admin' ? (targetBusinessId || undefined) : undefined,
         kind: 'customer',
         name,
         gstin: gstin ? gstin.toUpperCase().trim() : null,
@@ -68,6 +84,26 @@ export default function CustomersPage() {
       fetchCustomers();
     } catch (err: any) {
       alert(err.message || 'Failed to create customer');
+    }
+  };
+
+  const handleToggleCustomerStatus = async (c: any) => {
+    const newStatus = c.isActive === false ? true : false;
+    try {
+      await api.put(`/api/v1/parties/${c.id}`, { isActive: newStatus });
+      fetchCustomers();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update customer status');
+    }
+  };
+
+  const handleDeleteCustomer = async (c: any) => {
+    if (!confirm(`Are you sure you want to delete ${c.name}? This will remove it from all distributor records.`)) return;
+    try {
+      await api.delete(`/api/v1/parties/${c.id}`);
+      fetchCustomers();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete customer');
     }
   };
 
@@ -129,10 +165,16 @@ export default function CustomersPage() {
               <thead className="bg-slate-50 text-slate-500 uppercase font-semibold border-b">
                 <tr>
                   <th className="py-3 px-4 whitespace-nowrap min-w-[200px]">Customer Name</th>
+                  {user?.role === 'super_admin' && (
+                    <th className="py-3 px-4 whitespace-nowrap text-indigo-600 dark:text-indigo-400">Distributor Firm</th>
+                  )}
                   <th className="py-3 px-4 whitespace-nowrap">GSTIN</th>
                   <th className="py-3 px-4 whitespace-nowrap">Phone / Email</th>
                   <th className="py-3 px-4 whitespace-nowrap">Credit Days</th>
                   <th className="py-3 px-4 text-right whitespace-nowrap">Outstanding Balance</th>
+                  {user?.role === 'super_admin' && (
+                    <th className="py-3 px-4 text-right whitespace-nowrap">Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -146,6 +188,13 @@ export default function CustomersPage() {
                         </span>
                       )}
                     </td>
+                    {user?.role === 'super_admin' && (
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                          {c.distributorName || 'Distributor'}
+                        </span>
+                      </td>
+                    )}
                     <td className="py-3 px-4 font-mono text-[11px] text-slate-600">
                       {c.gstin || 'Unregistered'}
                     </td>
@@ -157,6 +206,24 @@ export default function CustomersPage() {
                     <td className="py-3 px-4 text-right font-bold text-slate-900">
                       ₹ {formatPaise(c.currentBalance || c.openingBalance || 0)}
                     </td>
+                    {user?.role === 'super_admin' && (
+                      <td className="py-3 px-4 text-right space-x-1.5 whitespace-nowrap">
+                        <button
+                          onClick={() => handleToggleCustomerStatus(c)}
+                          className="px-2 py-0.5 text-[10px] font-bold rounded border transition"
+                          title="Toggle Active/Disable"
+                        >
+                          {c.isActive === false ? 'Enable' : 'Disable'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCustomer(c)}
+                          className="p-1 text-slate-400 hover:text-red-600 rounded transition inline-flex items-center"
+                          title="Delete customer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -177,6 +244,27 @@ export default function CustomersPage() {
             </div>
 
             <form onSubmit={handleCreateCustomer} className="p-6 space-y-3 text-xs">
+              {user?.role === 'super_admin' && (
+                <div>
+                  <label className="block font-semibold mb-1 text-indigo-700 dark:text-indigo-300">
+                    🏢 Target Distributor Firm *
+                  </label>
+                  <select
+                    value={targetBusinessId}
+                    onChange={(e) => setTargetBusinessId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                  >
+                    <option value="" disabled>-- Select Distributor Firm --</option>
+                    {distributors.map((d: any) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} {d.gstin ? `(${d.gstin})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block font-semibold mb-1">Company / Customer Name *</label>
                 <input
