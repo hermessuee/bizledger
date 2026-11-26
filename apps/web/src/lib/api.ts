@@ -65,14 +65,26 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    if (typeof window !== 'undefined') {
-      const activeBizId = localStorage.getItem('hermes_active_business_id');
-      if (activeBizId && activeBizId !== 'all') {
+    const isAuthEndpoint =
+      endpoint.includes('/auth/login') ||
+      endpoint.includes('/auth/register') ||
+      endpoint.includes('/auth/refresh') ||
+      endpoint.includes('/api/health');
+
+    let activeBizId: string | null = null;
+    if (!isAuthEndpoint && typeof window !== 'undefined') {
+      const stored = localStorage.getItem('hermes_active_business_id');
+      if (stored && stored !== 'all' && stored !== '00000000-0000-0000-0000-000000000000') {
+        activeBizId = stored;
         headers['x-business-id'] = activeBizId;
       }
     }
 
-    const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+    let url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+    if (activeBizId && !isAuthEndpoint) {
+      const separator = url.includes('?') ? '&' : '?';
+      url = `${url}${separator}businessId=${encodeURIComponent(activeBizId)}`;
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 12000);

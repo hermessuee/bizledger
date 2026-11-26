@@ -265,9 +265,10 @@ documents.get('/:id/pdf-data', async (c) => {
   }
 
   const party = memoryStore.parties.find((p) => p.id === doc.partyId);
+  const currentBiz = memoryStore.businesses.find((b) => b.id === businessId) || memoryStore.business;
 
   return c.json({
-    business: memoryStore.business,
+    business: currentBiz,
     document: doc,
     party,
     amountInWords: paiseToWords(doc.total),

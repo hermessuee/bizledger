@@ -22,7 +22,9 @@ admin.use('/*', async (c, next) => {
 
 // GET /api/v1/admin/businesses - List all registered distributors with metrics
 admin.get('/businesses', (c) => {
-  const businessesWithStats = memoryStore.businesses.map((b) => {
+  const businessesWithStats = memoryStore.businesses
+    .filter((b) => b.id !== '00000000-0000-0000-0000-000000000000') // Filter out platform admin from tenant list
+    .map((b) => {
     const userCount = memoryStore.users.filter((u) => u.businessId === b.id).length;
     const customerCount = memoryStore.parties.filter((p) => p.businessId === b.id && (p.kind === 'customer' || p.kind === 'both')).length;
     const vendorCount = memoryStore.parties.filter((p) => p.businessId === b.id && (p.kind === 'vendor' || p.kind === 'both')).length;

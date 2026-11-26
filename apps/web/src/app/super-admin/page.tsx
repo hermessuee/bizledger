@@ -150,10 +150,13 @@ export default function SuperAdminPage() {
       setLoading(true);
       setError(null);
       const res = await api.get('/api/v1/admin/businesses');
-      setBusinesses(res.businesses || []);
+      const list = (res.businesses || []).filter(
+        (b: any) => b.id !== '00000000-0000-0000-0000-000000000000'
+      );
+      setBusinesses(list);
       setAvailableMenus(res.availableMenus || []);
-      if (!newTxBusinessId && res.businesses && res.businesses.length > 0) {
-        setNewTxBusinessId(res.businesses[0].id);
+      if (!newTxBusinessId && list.length > 0) {
+        setNewTxBusinessId(list[0].id);
       }
     } catch (err: any) {
       if (err?.status !== 401 && !err?.message?.includes('Authorization')) {

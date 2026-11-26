@@ -25,7 +25,7 @@ partiesRoute.get('/', requirePermission('customers', 'view'), (c) => {
   const enriched = list.map((party) => {
     let balance = party.openingBalance;
     for (const entry of memoryStore.journalEntries) {
-      if (!entry.isVoid) {
+      if (entry.businessId === businessId && !entry.isVoid) {
         for (const line of entry.lines) {
           if (line.partyId === party.id) {
             // Debit increases customer balance (receivable), credit decreases

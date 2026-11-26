@@ -313,7 +313,11 @@ export function AppShell({
                     ⚡ Super-Admin Context:
                   </span>
                   <select
-                    value={business?.id || '00000000-0000-0000-0000-000000000000'}
+                    value={
+                      business?.id && business.id !== '00000000-0000-0000-0000-000000000000'
+                        ? business.id
+                        : '00000000-0000-0000-0000-000000000000'
+                    }
                     onChange={async (e) => {
                       const targetId = e.target.value;
                       await switchBusiness(targetId === '00000000-0000-0000-0000-000000000000' ? null : targetId);
@@ -323,11 +327,13 @@ export function AppShell({
                     <option value="00000000-0000-0000-0000-000000000000">
                       🌐 Central Platform Administration (Global)
                     </option>
-                    {adminBusinesses.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        🏢 {b.name}
-                      </option>
-                    ))}
+                    {adminBusinesses
+                      .filter((b) => b.id !== '00000000-0000-0000-0000-000000000000')
+                      .map((b) => (
+                        <option key={b.id} value={b.id}>
+                          🏢 {b.name}
+                        </option>
+                      ))}
                   </select>
                 </div>
               ) : (

@@ -35,11 +35,24 @@ app.use('*', async (c, next) => {
 app.use('*', async (c, next) => {
   return cors({
     origin: (origin) => origin || '*',
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-business-id',
+      'X-Business-Id',
+      'x-requested-with',
+      'X-Requested-With',
+      'Accept',
+      'Origin',
+    ],
+    exposeHeaders: ['Content-Length', 'X-Total-Count', 'X-Business-Id'],
     credentials: true,
   })(c, next);
 });
+
+// Explicit preflight handler for OPTIONS requests
+app.options('*', (c) => c.text('', 204));
 
 // Standard Security Headers
 app.use('*', async (c, next) => {

@@ -10,32 +10,36 @@ export const settingsRoute = new Hono<AppContext>();
 settingsRoute.use('/*', authMiddleware);
 
 settingsRoute.get('/', requirePermission('settings', 'view'), (c) => {
-  return c.json({ business: memoryStore.business });
+  const businessId = c.get('businessId');
+  const currentBiz = memoryStore.businesses.find((b) => b.id === businessId) || memoryStore.business;
+  return c.json({ business: currentBiz });
 });
 
 settingsRoute.put('/', requirePermission('settings', 'edit'), async (c) => {
+  const businessId = c.get('businessId');
   const user = c.get('user');
   const body = await c.req.json();
+  const currentBiz = memoryStore.businesses.find((b) => b.id === businessId) || memoryStore.business;
 
-  if (body.name) memoryStore.business.name = body.name;
-  if (body.gstin) memoryStore.business.gstin = body.gstin;
-  if (body.address) memoryStore.business.address = body.address;
+  if (body.name) currentBiz.name = body.name;
+  if (body.gstin) currentBiz.gstin = body.gstin;
+  if (body.address) currentBiz.address = body.address;
   if (body.settings) {
-    memoryStore.business.settings = {
-      ...memoryStore.business.settings,
+    currentBiz.settings = {
+      ...currentBiz.settings,
       ...body.settings,
     };
   }
 
   recordAuditLog({
-    businessId: memoryStore.business.id,
+    businessId: currentBiz.id,
     userId: user.id,
     action: 'UPDATE_SETTINGS',
     entity: 'settings',
     details: body,
   });
 
-  return c.json({ success: true, business: memoryStore.business });
+  return c.json({ success: true, business: currentBiz });
 });
 
 // Audit Log Viewer

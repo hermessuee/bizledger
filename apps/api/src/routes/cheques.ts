@@ -41,7 +41,8 @@ cheques.get('/alerts', requirePermission('cheques', 'view'), (c) => {
   checkAndFlagStaleCheques(businessId);
 
   const today = new Date().toISOString().split('T')[0];
-  const settings = memoryStore.business.settings;
+  const currentBiz = memoryStore.businesses.find((b) => b.id === businessId) || memoryStore.business;
+  const settings = currentBiz.settings || {};
   const alertDays = (settings.alertDaysBefore && settings.alertDaysBefore[0]) || 7;
 
   const upcomingCutoffDate = new Date();

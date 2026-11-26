@@ -69,13 +69,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem('hermes_user_session', JSON.stringify(data.user));
         localStorage.setItem('hermes_business_session', JSON.stringify(data.business));
       }
-    } catch (err) {
-      api.setToken(null);
-      setUser(null);
-      setBusiness(null);
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('hermes_user_session');
-        localStorage.removeItem('hermes_business_session');
+    } catch (err: any) {
+      console.warn('fetchSession warning:', err);
+      // ONLY log out if backend returns 401 Unauthorized (token invalid / expired)
+      if (err?.status === 401) {
+        api.setToken(null);
+        setUser(null);
+        setBusiness(null);
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('hermes_user_session');
+          localStorage.removeItem('hermes_business_session');
+          localStorage.removeItem('hermes_active_business_id');
+        }
       }
     } finally {
       setLoading(false);
@@ -87,7 +92,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (usernameOrEmail: string, password: string) => {
-    // Single round-trip login: backend returns user + business together
+    // Clear any previous switched context before fresh login
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('hermes_active_business_id');
+    }
+    api.clearCache();
     const data = await api.post('/api/v1/auth/login', { usernameOrEmail, password });
     api.setToken(data.accessToken);
     if (typeof window !== 'undefined') {
@@ -110,6 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('bizledger_refresh_token');
       localStorage.removeItem('hermes_user_session');
       localStorage.removeItem('hermes_business_session');
+      localStorage.removeItem('hermes_active_business_id');
       sessionStorage.removeItem('bizledger_alerts_shown_session');
     }
     setUser(null);
@@ -118,7 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const switchBusiness = async (businessId: string | null) => {
     if (typeof window !== 'undefined') {
-      if (businessId && businessId !== 'all') {
+      if (businessId && businessId !== 'all' && businessId !== '00000000-0000-0000-0000-000000000000') {
         localStorage.setItem('hermes_active_business_id', businessId);
       } else {
         localStorage.removeItem('hermes_active_business_id');
