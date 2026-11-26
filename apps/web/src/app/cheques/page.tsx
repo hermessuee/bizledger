@@ -230,17 +230,17 @@ export default function ChequesPage() {
         {/* Cheques Table */}
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[950px]">
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider font-semibold">
                 <tr>
-                  <th className="py-3 px-4">Direction</th>
-                  <th className="py-3 px-4">Cheque Date</th>
-                  <th className="py-3 px-4">Cheque #</th>
-                  <th className="py-3 px-4">Party Name</th>
-                  <th className="py-3 px-4">Bank & Branch</th>
-                  <th className="py-3 px-4 text-right">Amount (₹)</th>
-                  <th className="py-3 px-4 text-center">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Direction</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Cheque Date</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Cheque #</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[180px]">Party Name</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Bank & Branch</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Amount (₹)</th>
+                  <th className="py-3 px-4 text-center whitespace-nowrap">Status</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">

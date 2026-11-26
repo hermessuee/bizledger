@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { AppContext } from '../types';
 import { authMiddleware } from '../middleware/auth';
 import { memoryStore } from '../store';
-import { MenuKey, Business, MENU_KEYS } from '@bizledger/shared';
+import { MenuKey, Business, MENU_KEYS, Role, ChequeItem } from '@bizledger/shared';
 import { recordAuditLog } from '../audit';
 import { hashPassword } from '../crypto';
 
@@ -136,6 +136,290 @@ admin.put('/businesses/:id/status', async (c) => {
   return c.json({ success: true, business });
 });
 
+// PUT /api/v1/admin/businesses/:id - Super Admin updates firm details (Name, GSTIN, State Code, Address, Status)
+admin.put('/businesses/:id', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<{
+    name?: string;
+    gstin?: string;
+    stateCode?: string;
+    address?: string;
+    status?: 'active' | 'suspended' | 'trial';
+  }>();
+
+  const business = memoryStore.businesses.find((b) => b.id === id);
+  if (!business) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Distributor business not found' } }, 404);
+  }
+
+  if (body.name !== undefined && body.name.trim()) business.name = body.name.trim();
+  if (body.gstin !== undefined) business.gstin = body.gstin ? body.gstin.trim().toUpperCase() : undefined;
+  if (body.stateCode !== undefined && body.stateCode.trim()) business.stateCode = body.stateCode.trim();
+  if (body.address !== undefined) business.address = body.address.trim();
+  if (body.status !== undefined) business.status = body.status;
+
+  recordAuditLog({
+    businessId: business.id,
+    userId: c.get('user').id,
+    action: 'SUPER_ADMIN_UPDATE_BUSINESS',
+    details: { businessName: business.name, updates: body },
+  });
+
+  return c.json({ success: true, business });
+});
+
+// DELETE /api/v1/admin/businesses/:id - Super Admin permanently deletes a distributor firm and associated data
+admin.delete('/businesses/:id', async (c) => {
+  const id = c.req.param('id');
+  if (id === '00000000-0000-0000-0000-000000000000') {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Central Platform Administration cannot be deleted' } }, 403);
+  }
+
+  const bIdx = memoryStore.businesses.findIndex((b) => b.id === id);
+  if (bIdx === -1) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Distributor business not found' } }, 404);
+  }
+
+  const removedBiz = memoryStore.businesses.splice(bIdx, 1)[0];
+
+  // Clean up associated users (preserving platform super admin)
+  memoryStore.users = memoryStore.users.filter((u) => u.businessId !== id || u.role === 'super_admin');
+  // Clean up linked data
+  memoryStore.parties = memoryStore.parties.filter((p) => p.businessId !== id);
+  memoryStore.items = memoryStore.items.filter((i) => i.businessId !== id);
+  memoryStore.documents = memoryStore.documents.filter((d) => d.businessId !== id);
+  memoryStore.cheques = memoryStore.cheques.filter((ch) => ch.businessId !== id);
+  memoryStore.payments = memoryStore.payments.filter((pay) => pay.businessId !== id);
+  memoryStore.journalEntries = memoryStore.journalEntries.filter((j) => j.businessId !== id);
+
+  recordAuditLog({
+    businessId: id,
+    userId: c.get('user').id,
+    action: 'SUPER_ADMIN_DELETE_BUSINESS',
+    details: { businessName: removedBiz.name },
+  });
+
+  return c.json({ success: true, message: `Distributor "${removedBiz.name}" and all associated data permanently deleted` });
+});
+
+// GET /api/v1/admin/businesses/:id/users - Super Admin views all users under a distributor firm
+admin.get('/businesses/:id/users', (c) => {
+  const businessId = c.req.param('id');
+  const business = memoryStore.businesses.find((b) => b.id === businessId);
+  if (!business) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Distributor not found' } }, 404);
+  }
+
+  const users = memoryStore.users
+    .filter((u) => u.businessId === businessId)
+    .map((u) => ({
+      id: u.id,
+      businessId: u.businessId,
+      name: u.name,
+      email: u.email,
+      username: u.username,
+      role: u.role,
+      isActive: u.isActive,
+      createdAt: u.createdAt,
+      lastLoginAt: u.lastLoginAt,
+    }));
+
+  return c.json({ users, businessName: business.name });
+});
+
+// POST /api/v1/admin/businesses/:id/users - Super Admin creates a new user under a distributor firm
+admin.post('/businesses/:id/users', async (c) => {
+  const businessId = c.req.param('id');
+  const business = memoryStore.businesses.find((b) => b.id === businessId);
+  if (!business) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Distributor not found' } }, 404);
+  }
+
+  const body = await c.req.json();
+  const { name, username, email, password, role = 'staff' } = body;
+
+  if (!name || !username || !email || !password) {
+    return c.json({ error: { code: 'VALIDATION_ERROR', message: 'Name, username, email, and password are required' } }, 400);
+  }
+
+  const normalizedUsername = username.trim().toLowerCase();
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const existing = memoryStore.users.find(
+    (u) => u.username.toLowerCase() === normalizedUsername || u.email.toLowerCase() === normalizedEmail
+  );
+  if (existing) {
+    return c.json({ error: { code: 'DUPLICATE_USER', message: 'Username or email is already registered' } }, 409);
+  }
+
+  const passwordHash = await hashPassword(password);
+  const newUser = {
+    id: crypto.randomUUID(),
+    businessId,
+    name: name.trim(),
+    email: normalizedEmail,
+    username: normalizedUsername,
+    passwordHash,
+    role: role as Role,
+    isActive: true,
+    mustChangePassword: false,
+    failedAttempts: 0,
+    lockedUntil: null,
+    lastLoginAt: null,
+    createdAt: new Date().toISOString(),
+    permissions: (MENU_KEYS as readonly MenuKey[]).reduce((acc, key) => {
+      acc[key] = { canView: true, canCreate: true, canEdit: true, canDelete: true, canExport: true };
+      return acc;
+    }, {} as any),
+  };
+
+  memoryStore.users.push(newUser);
+
+  recordAuditLog({
+    businessId,
+    userId: c.get('user').id,
+    action: 'SUPER_ADMIN_CREATE_USER',
+    details: { targetUsername: newUser.username, targetRole: newUser.role, businessName: business.name },
+  });
+
+  return c.json({
+    success: true,
+    user: {
+      id: newUser.id,
+      businessId: newUser.businessId,
+      name: newUser.name,
+      email: newUser.email,
+      username: newUser.username,
+      role: newUser.role,
+      isActive: newUser.isActive,
+      createdAt: newUser.createdAt,
+    },
+  }, 201);
+});
+
+// PUT /api/v1/admin/businesses/:id/users/:userId - Super Admin edits any user's credentials & role
+admin.put('/businesses/:id/users/:userId', async (c) => {
+  const businessId = c.req.param('id');
+  const userId = c.req.param('userId');
+  const body = await c.req.json<{
+    name?: string;
+    username?: string;
+    email?: string;
+    role?: Role;
+    isActive?: boolean;
+  }>();
+
+  const user = memoryStore.users.find((u) => u.id === userId && u.businessId === businessId);
+  if (!user) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found in this firm' } }, 404);
+  }
+
+  // Protect Super Admin from accidental lockout
+  if (user.username === 'anoopsue' || user.role === 'super_admin') {
+    if (body.isActive === false || (body.role && body.role !== 'super_admin')) {
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot deactivate or demote platform Super Administrator' } }, 403);
+    }
+  }
+
+  if (body.name !== undefined && body.name.trim()) user.name = body.name.trim();
+  if (body.username !== undefined && body.username.trim()) {
+    const newUsername = body.username.trim().toLowerCase();
+    const conflict = memoryStore.users.find((u) => u.id !== userId && u.username.toLowerCase() === newUsername);
+    if (conflict) {
+      return c.json({ error: { code: 'DUPLICATE_USER', message: 'Username is already in use by another account' } }, 409);
+    }
+    user.username = newUsername;
+  }
+  if (body.email !== undefined && body.email.trim()) {
+    const newEmail = body.email.trim().toLowerCase();
+    const conflict = memoryStore.users.find((u) => u.id !== userId && u.email.toLowerCase() === newEmail);
+    if (conflict) {
+      return c.json({ error: { code: 'DUPLICATE_USER', message: 'Email is already in use by another account' } }, 409);
+    }
+    user.email = newEmail;
+  }
+  if (body.role !== undefined) user.role = body.role;
+  if (body.isActive !== undefined) user.isActive = body.isActive;
+
+  recordAuditLog({
+    businessId,
+    userId: c.get('user').id,
+    action: 'SUPER_ADMIN_UPDATE_USER',
+    details: { targetUserId: user.id, targetUsername: user.username, updates: body },
+  });
+
+  return c.json({
+    success: true,
+    user: {
+      id: user.id,
+      businessId: user.businessId,
+      name: user.name,
+      email: user.email,
+      username: user.username,
+      role: user.role,
+      isActive: user.isActive,
+    },
+  });
+});
+
+// POST /api/v1/admin/businesses/:id/users/:userId/password - Super Admin sets/resets user password
+admin.post('/businesses/:id/users/:userId/password', async (c) => {
+  const businessId = c.req.param('id');
+  const userId = c.req.param('userId');
+  const body = await c.req.json<{ newPassword: string }>();
+
+  if (!body.newPassword || body.newPassword.length < 4) {
+    return c.json({ error: { code: 'VALIDATION_ERROR', message: 'Password must be at least 4 characters long' } }, 400);
+  }
+
+  const user = memoryStore.users.find((u) => u.id === userId && u.businessId === businessId);
+  if (!user) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found in this firm' } }, 404);
+  }
+
+  user.passwordHash = await hashPassword(body.newPassword);
+  user.failedAttempts = 0;
+  user.lockedUntil = null;
+
+  recordAuditLog({
+    businessId,
+    userId: c.get('user').id,
+    action: 'SUPER_ADMIN_RESET_PASSWORD',
+    details: { targetUserId: user.id, targetUsername: user.username },
+  });
+
+  return c.json({ success: true, message: `Password for user "${user.username}" updated successfully` });
+});
+
+// DELETE /api/v1/admin/businesses/:id/users/:userId - Super Admin deletes user from distributor
+admin.delete('/businesses/:id/users/:userId', async (c) => {
+  const businessId = c.req.param('id');
+  const userId = c.req.param('userId');
+
+  const user = memoryStore.users.find((u) => u.id === userId && u.businessId === businessId);
+  if (!user) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found in this firm' } }, 404);
+  }
+
+  if (user.username === 'anoopsue' || user.role === 'super_admin') {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot delete platform Super Administrator' } }, 403);
+  }
+
+  const uIdx = memoryStore.users.findIndex((u) => u.id === userId);
+  if (uIdx !== -1) {
+    memoryStore.users.splice(uIdx, 1);
+  }
+
+  recordAuditLog({
+    businessId,
+    userId: c.get('user').id,
+    action: 'SUPER_ADMIN_DELETE_USER',
+    details: { targetUserId: userId, targetUsername: user.username },
+  });
+
+  return c.json({ success: true, message: `User "${user.username}" deleted successfully` });
+});
+
 // =========================================================================
 // SUPER ADMIN MASTER TRANSACTION EXPLORER & FULL CRUD APIS
 // Allows Super Admin to view, create, edit, and delete ANY transaction across ANY firm
@@ -232,13 +516,13 @@ admin.get('/transactions', (c) => {
         businessId: ch.businessId,
         businessName: getBizName(ch.businessId),
         type: 'cheque',
-        refNo: ch.chequeNumber,
+        refNo: ch.chequeNo,
         date: ch.chequeDate,
         partyId: ch.partyId,
         partyName: getPartyName(ch.partyId),
         amount: ch.amount,
         status: ch.status,
-        narration: `${ch.direction === 'inward' ? 'Received PDC' : 'Issued Cheque'} • Bank: ${ch.bankName}`,
+        narration: `${ch.direction === 'received' ? 'Received PDC' : 'Issued Cheque'} • Bank: ${ch.bankName || 'Bank'}`,
         raw: ch,
       });
     }
@@ -360,23 +644,18 @@ admin.post('/transactions', async (c) => {
   }
 
   if (type === 'cheque') {
-    const newCheque = {
+    const newCheque: ChequeItem = {
       id: crypto.randomUUID(),
       businessId,
-      chequeNumber: refNo || String(Math.floor(100000 + Math.random() * 900000)),
+      chequeNo: refNo || String(Math.floor(100000 + Math.random() * 900000)),
       chequeDate: txDate,
+      txnDate: txDate,
       amount,
       bankName: bankName || 'State Bank of India',
       partyId: partyId || '',
-      direction: 'inward' as const,
-      status: 'received' as const,
-      isPdc: true,
-      notes: narration || 'Super Admin Cheque Entry',
-      alertsEnabled: true,
-      snoozedUntil: null,
-      clearingDate: null,
-      bouncedDate: null,
-      bounceReason: null,
+      direction: 'received',
+      status: 'pending',
+      remarks: narration || 'Super Admin Cheque Entry',
       createdAt: new Date().toISOString(),
     };
     memoryStore.cheques.push(newCheque);
@@ -384,7 +663,7 @@ admin.post('/transactions', async (c) => {
       businessId,
       userId: currentUser.id,
       action: 'SUPER_ADMIN_CREATE_CHEQUE',
-      details: { chequeNumber: newCheque.chequeNumber, amount },
+      details: { chequeNo: newCheque.chequeNo, amount },
     });
     return c.json({ success: true, transaction: newCheque }, 201);
   }
@@ -445,12 +724,14 @@ admin.put('/transactions/:type/:id', async (c) => {
     const ch = memoryStore.cheques.find((item) => item.id === id);
     if (!ch) return c.json({ error: { code: 'NOT_FOUND', message: 'Cheque not found' } }, 404);
 
-    if (body.chequeNumber) ch.chequeNumber = body.chequeNumber;
+    if (body.chequeNumber) ch.chequeNo = body.chequeNumber;
+    if (body.chequeNo) ch.chequeNo = body.chequeNo;
     if (body.chequeDate) ch.chequeDate = body.chequeDate;
     if (body.amount !== undefined) ch.amount = body.amount;
     if (body.status) ch.status = body.status;
     if (body.bankName) ch.bankName = body.bankName;
-    if (body.notes !== undefined) ch.notes = body.notes;
+    if (body.notes !== undefined) ch.remarks = body.notes;
+    if (body.remarks !== undefined) ch.remarks = body.remarks;
 
     recordAuditLog({
       businessId: ch.businessId,
@@ -529,9 +810,9 @@ admin.delete('/transactions/:type/:id', async (c) => {
       businessId: removed.businessId,
       userId: currentUser.id,
       action: 'SUPER_ADMIN_DELETE_CHEQUE',
-      details: { id: removed.id, chequeNumber: removed.chequeNumber },
+      details: { id: removed.id, chequeNo: removed.chequeNo },
     });
-    return c.json({ success: true, message: `Cheque #${removed.chequeNumber} deleted successfully` });
+    return c.json({ success: true, message: `Cheque #${removed.chequeNo} deleted successfully` });
   }
 
   if (type === 'journal') {

@@ -35,17 +35,17 @@ export default function BillsPage() {
 
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[900px]">
               <thead className="bg-slate-50 text-slate-500 uppercase font-semibold border-b">
                 <tr>
-                  <th className="py-3 px-4">Bill #</th>
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Vendor</th>
-                  <th className="py-3 px-4">GSTIN</th>
-                  <th className="py-3 px-4 text-right">Taxable</th>
-                  <th className="py-3 px-4 text-right">ITC (GST)</th>
-                  <th className="py-3 px-4 text-right">Bill Total (₹)</th>
-                  <th className="py-3 px-4 text-center">Status</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Bill #</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Date</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[180px]">Vendor</th>
+                  <th className="py-3 px-4 whitespace-nowrap">GSTIN</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Taxable</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">ITC (GST)</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Bill Total (₹)</th>
+                  <th className="py-3 px-4 text-center whitespace-nowrap">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y">

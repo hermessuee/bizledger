@@ -125,14 +125,14 @@ export default function CustomersPage() {
         {/* Table */}
         <div className="bg-white dark:bg-slate-900 rounded-xl border shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[800px]">
               <thead className="bg-slate-50 text-slate-500 uppercase font-semibold border-b">
                 <tr>
-                  <th className="py-3 px-4">Customer Name</th>
-                  <th className="py-3 px-4">GSTIN</th>
-                  <th className="py-3 px-4">Phone / Email</th>
-                  <th className="py-3 px-4">Credit Days</th>
-                  <th className="py-3 px-4 text-right">Outstanding Balance</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[200px]">Customer Name</th>
+                  <th className="py-3 px-4 whitespace-nowrap">GSTIN</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Phone / Email</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Credit Days</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Outstanding Balance</th>
                 </tr>
               </thead>
               <tbody className="divide-y">

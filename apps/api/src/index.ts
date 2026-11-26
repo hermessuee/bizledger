@@ -52,7 +52,7 @@ app.use('*', async (c, next) => {
 });
 
 // Explicit preflight handler for OPTIONS requests
-app.options('*', (c) => c.text('', 204));
+app.options('*', (c) => c.body(null, 204));
 
 // Standard Security Headers
 app.use('*', async (c, next) => {

@@ -123,14 +123,14 @@ export default function VendorsPage() {
         {/* Table */}
         <div className="bg-white dark:bg-slate-900 rounded-xl border shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[800px]">
               <thead className="bg-slate-50 text-slate-500 uppercase font-semibold border-b">
                 <tr>
-                  <th className="py-3 px-4">Vendor Name</th>
-                  <th className="py-3 px-4">GSTIN</th>
-                  <th className="py-3 px-4">Phone / Email</th>
-                  <th className="py-3 px-4">Payment Terms</th>
-                  <th className="py-3 px-4 text-right">Payable Balance</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[200px]">Vendor Name</th>
+                  <th className="py-3 px-4 whitespace-nowrap">GSTIN</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Phone / Email</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Payment Terms</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Payable Balance</th>
                 </tr>
               </thead>
               <tbody className="divide-y">

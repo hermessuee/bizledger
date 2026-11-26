@@ -38,7 +38,24 @@ import {
   ExternalLink,
   Layers,
   Filter,
+  Key,
+  Copy,
+  ShieldCheck,
+  KeyRound,
+  RotateCcw,
 } from 'lucide-react';
+
+interface FirmUser {
+  id: string;
+  businessId: string;
+  name: string;
+  email: string;
+  username: string;
+  role: string;
+  isActive: boolean;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
 
 interface DistributorWithStats extends Business {
   stats: {
@@ -144,6 +161,58 @@ export default function SuperAdminPage() {
   const [newTxNarration, setNewTxNarration] = useState('');
   const [createTxSubmitting, setCreateTxSubmitting] = useState(false);
   const [createTxError, setCreateTxError] = useState<string | null>(null);
+
+  // 1. Edit Firm State
+  const [editingFirm, setEditingFirm] = useState<DistributorWithStats | null>(null);
+  const [editFirmName, setEditFirmName] = useState('');
+  const [editFirmGstin, setEditFirmGstin] = useState('');
+  const [editFirmStateCode, setEditFirmStateCode] = useState('27');
+  const [editFirmAddress, setEditFirmAddress] = useState('');
+  const [editFirmStatus, setEditFirmStatus] = useState<'active' | 'suspended' | 'trial'>('active');
+  const [editFirmSubmitting, setEditFirmSubmitting] = useState(false);
+
+  // 2. Delete Firm State
+  const [deletingFirm, setDeletingFirm] = useState<DistributorWithStats | null>(null);
+  const [deleteFirmSubmitting, setDeleteFirmSubmitting] = useState(false);
+
+  // 3. Firm Users Governance State
+  const [usersModalFirm, setUsersModalFirm] = useState<DistributorWithStats | null>(null);
+  const [firmUsers, setFirmUsers] = useState<FirmUser[]>([]);
+  const [firmUsersLoading, setFirmUsersLoading] = useState(false);
+  const [firmUserSearch, setFirmUserSearch] = useState('');
+
+  // Add User to Firm
+  const [addUserOpen, setAddUserOpen] = useState(false);
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserUsername, setNewUserUsername] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserRole, setNewUserRole] = useState('staff');
+  const [addUserSubmitting, setAddUserSubmitting] = useState(false);
+  const [addUserError, setAddUserError] = useState<string | null>(null);
+
+  // Edit User in Firm
+  const [editingFirmUser, setEditingFirmUser] = useState<FirmUser | null>(null);
+  const [editUserName, setEditUserName] = useState('');
+  const [editUserUsername, setEditUserUsername] = useState('');
+  const [editUserEmail, setEditUserEmail] = useState('');
+  const [editUserRole, setEditUserRole] = useState('staff');
+  const [editUserIsActive, setEditUserIsActive] = useState(true);
+  const [editUserSubmitting, setEditUserSubmitting] = useState(false);
+  const [editUserError, setEditUserError] = useState<string | null>(null);
+
+  // Reset User Password
+  const [resetPwUser, setResetPwUser] = useState<FirmUser | null>(null);
+  const [resetPwValue, setResetPwValue] = useState('');
+  const [resetPwSubmitting, setResetPwSubmitting] = useState(false);
+  const [resetPwCopied, setResetPwCopied] = useState(false);
+  const [resetPwSuccess, setResetPwSuccess] = useState<string | null>(null);
+  const [resetPwError, setResetPwError] = useState<string | null>(null);
+
+  // Delete User from Firm
+  const [deleteUserTarget, setDeleteUserTarget] = useState<FirmUser | null>(null);
+  const [deleteUserSubmitting, setDeleteUserSubmitting] = useState(false);
+  const [deleteUserError, setDeleteUserError] = useState<string | null>(null);
 
   const fetchDistributors = async () => {
     try {
@@ -407,6 +476,202 @@ export default function SuperAdminPage() {
       setCreateTxError(err.message || 'Failed to create transaction');
     } finally {
       setCreateTxSubmitting(false);
+    }
+  };
+
+  // Open Edit Firm Modal
+  const handleOpenEditFirmModal = (b: DistributorWithStats) => {
+    setEditingFirm(b);
+    setEditFirmName(b.name);
+    setEditFirmGstin(b.gstin || '');
+    setEditFirmStateCode(b.stateCode || '27');
+    setEditFirmAddress(b.address || '');
+    setEditFirmStatus((b.status as any) || 'active');
+  };
+
+  // Save Edit Firm
+  const handleSaveEditFirm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingFirm) return;
+    try {
+      setEditFirmSubmitting(true);
+      await api.put(`/api/v1/admin/businesses/${editingFirm.id}`, {
+        name: editFirmName.trim(),
+        gstin: editFirmGstin.trim(),
+        stateCode: editFirmStateCode.trim(),
+        address: editFirmAddress.trim(),
+        status: editFirmStatus,
+      });
+      setSuccessMessage(`Distributor firm "${editFirmName}" updated successfully`);
+      setEditingFirm(null);
+      fetchDistributors();
+    } catch (err: any) {
+      setError(err.message || 'Failed to update distributor firm');
+    } finally {
+      setEditFirmSubmitting(false);
+    }
+  };
+
+  // Open Delete Firm Modal
+  const handleOpenDeleteFirmModal = (b: DistributorWithStats) => {
+    setDeletingFirm(b);
+  };
+
+  // Confirm Delete Firm
+  const handleConfirmDeleteFirm = async () => {
+    if (!deletingFirm) return;
+    try {
+      setDeleteFirmSubmitting(true);
+      await api.delete(`/api/v1/admin/businesses/${deletingFirm.id}`);
+      setSuccessMessage(`Distributor firm "${deletingFirm.name}" and all associated data permanently deleted`);
+      setDeletingFirm(null);
+      fetchDistributors();
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete distributor firm');
+    } finally {
+      setDeleteFirmSubmitting(false);
+    }
+  };
+
+  // Open Users Modal for Firm
+  const fetchFirmUsers = async (businessId: string) => {
+    try {
+      setFirmUsersLoading(true);
+      const res = await api.get(`/api/v1/admin/businesses/${businessId}/users`);
+      setFirmUsers(res.users || []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch users for this firm');
+    } finally {
+      setFirmUsersLoading(false);
+    }
+  };
+
+  const handleOpenUsersModal = (b: DistributorWithStats) => {
+    setUsersModalFirm(b);
+    setFirmUserSearch('');
+    fetchFirmUsers(b.id);
+  };
+
+  // Create User Under Firm
+  const handleCreateFirmUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!usersModalFirm) return;
+    setAddUserError(null);
+    try {
+      setAddUserSubmitting(true);
+      await api.post(`/api/v1/admin/businesses/${usersModalFirm.id}/users`, {
+        name: newUserName.trim(),
+        username: newUserUsername.trim(),
+        email: newUserEmail.trim(),
+        password: newUserPassword,
+        role: newUserRole,
+      });
+      setSuccessMessage(`User "${newUserUsername}" created successfully for ${usersModalFirm.name}`);
+      setAddUserOpen(false);
+      setNewUserName('');
+      setNewUserUsername('');
+      setNewUserEmail('');
+      setNewUserPassword('');
+      fetchFirmUsers(usersModalFirm.id);
+      fetchDistributors();
+    } catch (err: any) {
+      setAddUserError(err.message || 'Failed to create user');
+    } finally {
+      setAddUserSubmitting(false);
+    }
+  };
+
+  // Open Edit User
+  const handleOpenEditFirmUser = (u: FirmUser) => {
+    setEditingFirmUser(u);
+    setEditUserName(u.name);
+    setEditUserUsername(u.username);
+    setEditUserEmail(u.email);
+    setEditUserRole(u.role);
+    setEditUserIsActive(u.isActive);
+    setEditUserError(null);
+  };
+
+  // Save Edit User
+  const handleSaveEditFirmUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!usersModalFirm || !editingFirmUser) return;
+    setEditUserError(null);
+    try {
+      setEditUserSubmitting(true);
+      await api.put(`/api/v1/admin/businesses/${usersModalFirm.id}/users/${editingFirmUser.id}`, {
+        name: editUserName.trim(),
+        username: editUserUsername.trim(),
+        email: editUserEmail.trim(),
+        role: editUserRole,
+        isActive: editUserIsActive,
+      });
+      setSuccessMessage(`User "${editUserUsername}" updated successfully`);
+      setEditingFirmUser(null);
+      fetchFirmUsers(usersModalFirm.id);
+    } catch (err: any) {
+      setEditUserError(err.message || 'Failed to update user');
+    } finally {
+      setEditUserSubmitting(false);
+    }
+  };
+
+  // Helper: Generate Secure Password
+  const generateStrongPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*';
+    let pw = 'H';
+    for (let i = 0; i < 9; i++) {
+      pw += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return pw;
+  };
+
+  // Open Reset Password
+  const handleOpenResetPassword = (u: FirmUser) => {
+    setResetPwUser(u);
+    setResetPwValue(generateStrongPassword());
+    setResetPwCopied(false);
+    setResetPwSuccess(null);
+    setResetPwError(null);
+  };
+
+  // Save Reset Password
+  const handleSaveResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!usersModalFirm || !resetPwUser) return;
+    setResetPwError(null);
+    try {
+      setResetPwSubmitting(true);
+      await api.post(`/api/v1/admin/businesses/${usersModalFirm.id}/users/${resetPwUser.id}/password`, {
+        newPassword: resetPwValue,
+      });
+      setResetPwSuccess(`Password for "${resetPwUser.username}" successfully updated to: ${resetPwValue}`);
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        navigator.clipboard.writeText(resetPwValue);
+        setResetPwCopied(true);
+      }
+    } catch (err: any) {
+      setResetPwError(err.message || 'Failed to reset user password');
+    } finally {
+      setResetPwSubmitting(false);
+    }
+  };
+
+  // Delete User from Firm
+  const handleConfirmDeleteFirmUser = async () => {
+    if (!usersModalFirm || !deleteUserTarget) return;
+    setDeleteUserError(null);
+    try {
+      setDeleteUserSubmitting(true);
+      await api.delete(`/api/v1/admin/businesses/${usersModalFirm.id}/users/${deleteUserTarget.id}`);
+      setSuccessMessage(`User "${deleteUserTarget.username}" permanently deleted`);
+      setDeleteUserTarget(null);
+      fetchFirmUsers(usersModalFirm.id);
+      fetchDistributors();
+    } catch (err: any) {
+      setDeleteUserError(err.message || 'Failed to delete user');
+    } finally {
+      setDeleteUserSubmitting(false);
     }
   };
 
@@ -817,18 +1082,18 @@ export default function SuperAdminPage() {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+                <table className="w-full text-left text-xs min-w-[1200px]">
                   <thead className="bg-slate-50/90 text-slate-600 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200">
                     <tr>
-                      <th className="py-3.5 px-5">Distributor / Business Name</th>
-                      <th className="py-3.5 px-4">GSTIN & State</th>
-                      <th className="py-3.5 px-4 text-center">Status</th>
-                      <th className="py-3.5 px-4 text-center">Users</th>
-                      <th className="py-3.5 px-4 text-center">Customers</th>
-                      <th className="py-3.5 px-4 text-center">Invoices</th>
-                      <th className="py-3.5 px-4 text-center">Cheques</th>
-                      <th className="py-3.5 px-4 text-center">Modules Enabled</th>
-                      <th className="py-3.5 px-5 text-right">Actions</th>
+                      <th className="py-3.5 px-5 min-w-[260px] whitespace-nowrap">Distributor / Business Name</th>
+                      <th className="py-3.5 px-4 min-w-[160px] whitespace-nowrap">GSTIN & State</th>
+                      <th className="py-3.5 px-4 min-w-[120px] text-center whitespace-nowrap">Status</th>
+                      <th className="py-3.5 px-4 min-w-[70px] text-center whitespace-nowrap">Users</th>
+                      <th className="py-3.5 px-4 min-w-[80px] text-center whitespace-nowrap">Customers</th>
+                      <th className="py-3.5 px-4 min-w-[80px] text-center whitespace-nowrap">Invoices</th>
+                      <th className="py-3.5 px-4 min-w-[80px] text-center whitespace-nowrap">Cheques</th>
+                      <th className="py-3.5 px-4 min-w-[160px] text-center whitespace-nowrap">Modules Enabled</th>
+                      <th className="py-3.5 px-5 min-w-[420px] text-right whitespace-nowrap">Actions & Governance</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -836,22 +1101,22 @@ export default function SuperAdminPage() {
                       const enabledCount = b.enabledMenus ? b.enabledMenus.length : availableMenus.length;
                       return (
                         <tr key={b.id} className="hover:bg-slate-50/75 transition">
-                          <td className="py-3.5 px-5 font-semibold text-slate-900">
+                          <td className="py-3.5 px-5 font-semibold text-slate-900 min-w-[260px]">
                             <div className="flex items-center space-x-3">
                               <div className="p-2 rounded-lg bg-blue-50 text-blue-600 border border-blue-200 flex-shrink-0">
                                 <Building2 className="w-4 h-4" />
                               </div>
                               <div>
-                                <p className="font-bold text-slate-900 hover:text-blue-600 transition">{b.name}</p>
+                                <p className="font-bold text-slate-900 hover:text-blue-600 transition whitespace-nowrap">{b.name}</p>
                                 <p className="text-[10px] text-slate-400 font-mono">ID: {b.id.slice(0, 18)}...</p>
                               </div>
                             </div>
                           </td>
-                          <td className="py-3.5 px-4">
+                          <td className="py-3.5 px-4 whitespace-nowrap min-w-[160px]">
                             <p className="font-mono font-semibold text-slate-800">{b.gstin || 'Unregistered'}</p>
                             <p className="text-[10px] text-slate-500">State: {b.stateCode || '27'}</p>
                           </td>
-                          <td className="py-3.5 px-4 text-center">
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap min-w-[120px]">
                             <select
                               value={b.status || 'active'}
                               onChange={(e) => handleStatusChange(b.id, e.target.value as any)}
@@ -868,21 +1133,37 @@ export default function SuperAdminPage() {
                               <option value="suspended">Suspended</option>
                             </select>
                           </td>
-                          <td className="py-3.5 px-4 text-center font-bold text-slate-700">{b.stats?.users || 0}</td>
-                          <td className="py-3.5 px-4 text-center text-slate-600">{b.stats?.customers || 0}</td>
-                          <td className="py-3.5 px-4 text-center font-mono font-semibold text-slate-800">{b.stats?.invoices || 0}</td>
-                          <td className="py-3.5 px-4 text-center font-mono font-semibold text-slate-800">{b.stats?.cheques || 0}</td>
-                          <td className="py-3.5 px-4 text-center">
-                            <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200 text-[11px]">
-                              {enabledCount} of {availableMenus.length}
+                          <td className="py-3.5 px-4 text-center font-bold text-slate-700 whitespace-nowrap">{b.stats?.users || 0}</td>
+                          <td className="py-3.5 px-4 text-center text-slate-600 whitespace-nowrap">{b.stats?.customers || 0}</td>
+                          <td className="py-3.5 px-4 text-center font-mono font-semibold text-slate-800 whitespace-nowrap">{b.stats?.invoices || 0}</td>
+                          <td className="py-3.5 px-4 text-center font-mono font-semibold text-slate-800 whitespace-nowrap">{b.stats?.cheques || 0}</td>
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap min-w-[160px]">
+                            <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200 text-[11px] whitespace-nowrap shadow-xs">
+                              {enabledCount} / {availableMenus.length} Modules
                             </span>
                           </td>
-                          <td className="py-3.5 px-5 text-right">
-                            <div className="flex items-center justify-end space-x-2">
+                          <td className="py-3.5 px-5 text-right whitespace-nowrap min-w-[420px]">
+                            <div className="flex items-center justify-end space-x-1.5">
+                              <button
+                                onClick={() => handleOpenUsersModal(b)}
+                                className="px-2.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition inline-flex items-center space-x-1"
+                                title="Manage distributor users, usernames, and passwords"
+                              >
+                                <Users className="w-3.5 h-3.5 text-indigo-600" />
+                                <span>Users & Logins</span>
+                              </button>
+                              <button
+                                onClick={() => handleOpenEditFirmModal(b)}
+                                className="px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition inline-flex items-center space-x-1"
+                                title="Edit distributor firm name, GSTIN, and details"
+                              >
+                                <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                                <span>Edit Firm</span>
+                              </button>
                               <button
                                 onClick={() => handleOpenModuleModal(b)}
-                                className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition inline-flex items-center space-x-1"
-                                title="Configure Module Access"
+                                className="px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition inline-flex items-center space-x-1"
+                                title="Configure module access for this firm"
                               >
                                 <Sliders className="w-3.5 h-3.5 text-blue-600" />
                                 <span>Modules</span>
@@ -892,11 +1173,18 @@ export default function SuperAdminPage() {
                                   await switchBusiness(b.id);
                                   router.push('/invoices');
                                 }}
-                                className="px-3 py-1.5 text-xs font-semibold text-amber-900 bg-amber-100 hover:bg-amber-200 rounded-lg border border-amber-300 transition inline-flex items-center space-x-1"
-                                title="Switch active workspace context to this distributor"
+                                className="px-2.5 py-1.5 text-xs font-semibold text-amber-900 bg-amber-100 hover:bg-amber-200 rounded-lg border border-amber-300 transition inline-flex items-center space-x-1"
+                                title="Switch workspace context into this firm"
                               >
                                 <ExternalLink className="w-3.5 h-3.5 text-amber-700" />
-                                <span>Enter Ledger</span>
+                                <span>Enter</span>
+                              </button>
+                              <button
+                                onClick={() => handleOpenDeleteFirmModal(b)}
+                                className="p-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition inline-flex items-center"
+                                title="Permanently delete distributor firm and data"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-red-600" />
                               </button>
                             </div>
                           </td>
@@ -1058,18 +1346,18 @@ export default function SuperAdminPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full text-left text-xs min-w-[1100px]">
                     <thead className="bg-slate-50/90 text-slate-600 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200">
                       <tr>
-                        <th className="py-3.5 px-4">Date</th>
-                        <th className="py-3.5 px-4">Distributor Firm</th>
-                        <th className="py-3.5 px-4">Type</th>
-                        <th className="py-3.5 px-4">Ref / Doc #</th>
-                        <th className="py-3.5 px-4">Party Name</th>
-                        <th className="py-3.5 px-4 text-right">Amount (₹)</th>
-                        <th className="py-3.5 px-4 text-center">Status</th>
-                        <th className="py-3.5 px-4">Narration</th>
-                        <th className="py-3.5 px-5 text-right">Power Actions</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap">Date</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[180px]">Distributor Firm</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap">Type</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap">Ref / Doc #</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[160px]">Party Name</th>
+                        <th className="py-3.5 px-4 text-right whitespace-nowrap">Amount (₹)</th>
+                        <th className="py-3.5 px-4 text-center whitespace-nowrap">Status</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[160px]">Narration</th>
+                        <th className="py-3.5 px-5 text-right whitespace-nowrap">Power Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -1922,6 +2210,738 @@ export default function SuperAdminPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================================
+            MODAL 7: EDIT DISTRIBUTOR FIRM (POWER USER)
+        ========================================================================= */}
+        {editingFirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-2 bg-blue-100 text-blue-700 rounded-xl">
+                    <Edit3 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Edit Distributor Business
+                    </h3>
+                    <p className="text-[11px] text-slate-500">Global Governance Authority</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEditingFirm(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditFirm} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Distributor / Firm Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFirmName}
+                    onChange={(e) => setEditFirmName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      GSTIN
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={15}
+                      value={editFirmGstin}
+                      onChange={(e) => setEditFirmGstin(e.target.value.toUpperCase())}
+                      placeholder="e.g. 27AAPCA1234M1Z5"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      State *
+                    </label>
+                    <select
+                      value={editFirmStateCode}
+                      onChange={(e) => setEditFirmStateCode(e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    >
+                      {Object.entries(INDIAN_STATES).map(([code, name]) => (
+                        <option key={code} value={code}>
+                          {code} - {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Registered Business Address
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editFirmAddress}
+                    onChange={(e) => setEditFirmAddress(e.target.value)}
+                    placeholder="Enter full office/warehouse address..."
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Operating License Status *
+                  </label>
+                  <select
+                    value={editFirmStatus}
+                    onChange={(e) => setEditFirmStatus(e.target.value as any)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  >
+                    <option value="active">Active (Fully operational)</option>
+                    <option value="trial">Trial (Evaluation period)</option>
+                    <option value="suspended">Suspended (Access blocked)</option>
+                  </select>
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditingFirm(null)}
+                    className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editFirmSubmitting}
+                    className="px-5 py-2 text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 rounded-xl shadow-md shadow-amber-500/20 transition-all duration-200 disabled:opacity-50"
+                  >
+                    {editFirmSubmitting ? 'Saving...' : 'Save Firm Changes'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================================
+            MODAL 8: DELETE DISTRIBUTOR FIRM CONFIRMATION (POWER USER)
+        ========================================================================= */}
+        {deletingFirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-red-50">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-2 bg-red-100 text-red-600 rounded-xl">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Delete Distributor Firm Permanently
+                    </h3>
+                    <p className="text-[11px] text-red-700">Irreversible Platform Operation</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setDeletingFirm(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <p className="text-xs text-slate-700 leading-relaxed">
+                  Are you sure you want to permanently delete distributor{' '}
+                  <strong className="text-slate-900 font-bold">{deletingFirm.name}</strong>?
+                </p>
+                <div className="p-3 bg-red-50 rounded-xl border border-red-200 text-[11px] text-red-800 space-y-1">
+                  <p className="font-bold flex items-center">
+                    <AlertTriangle className="w-3.5 h-3.5 mr-1 text-red-600" />
+                    Warning: Total Data Wipe
+                  </p>
+                  <p>
+                    All users, customer records, vendor payables, sales invoices, cheques, and journal entries created under this firm will be permanently wiped.
+                  </p>
+                </div>
+              </div>
+
+              <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end space-x-3">
+                <button
+                  onClick={() => setDeletingFirm(null)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmDeleteFirm}
+                  disabled={deleteFirmSubmitting}
+                  className="px-5 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition shadow-md shadow-red-500/20 disabled:opacity-50"
+                >
+                  {deleteFirmSubmitting ? 'Deleting...' : 'Confirm & Delete Firm'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================================
+            MODAL 9: FIRM USERS & CREDENTIALS GOVERNANCE (POWER USER)
+        ========================================================================= */}
+        {usersModalFirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full border border-slate-200 max-h-[90vh] flex flex-col overflow-hidden">
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-slate-50 via-indigo-50/30 to-slate-50">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-indigo-100 text-indigo-700 rounded-xl">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h3 className="text-sm font-bold text-slate-900">
+                        {usersModalFirm.name} — Users & Credentials
+                      </h3>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
+                        {firmUsers.length} user(s)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      View, edit usernames, reset passwords, change roles, or remove accounts for this firm
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => {
+                      setAddUserOpen(true);
+                      setAddUserError(null);
+                    }}
+                    className="inline-flex items-center space-x-1 px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-xl shadow-xs transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add User</span>
+                  </button>
+                  <button
+                    onClick={() => setUsersModalFirm(null)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Users Search Bar */}
+              <div className="px-6 py-3 border-b border-slate-100 bg-white flex items-center justify-between">
+                <div className="relative w-72">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={firmUserSearch}
+                    onChange={(e) => setFirmUserSearch(e.target.value)}
+                    placeholder="Search name, username, or email..."
+                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <button
+                  onClick={() => fetchFirmUsers(usersModalFirm.id)}
+                  className="p-1.5 text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition"
+                  title="Reload Users"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${firmUsersLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+
+              {/* Users Table */}
+              <div className="overflow-y-auto p-6 flex-1">
+                {firmUsersLoading ? (
+                  <div className="py-12 text-center text-slate-400 text-xs">Loading distributor users...</div>
+                ) : firmUsers.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400 text-xs">No users found for this distributor firm.</div>
+                ) : (
+                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+                    <table className="w-full text-left text-xs min-w-[700px]">
+                      <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                        <tr>
+                          <th className="py-2.5 px-4 whitespace-nowrap">User</th>
+                          <th className="py-2.5 px-4 whitespace-nowrap">Username (Login ID)</th>
+                          <th className="py-2.5 px-4 whitespace-nowrap">Email</th>
+                          <th className="py-2.5 px-3 text-center whitespace-nowrap">Role</th>
+                          <th className="py-2.5 px-3 text-center whitespace-nowrap">Status</th>
+                          <th className="py-2.5 px-4 text-right whitespace-nowrap">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-800">
+                        {firmUsers
+                          .filter(
+                            (u) =>
+                              u.name.toLowerCase().includes(firmUserSearch.toLowerCase()) ||
+                              u.username.toLowerCase().includes(firmUserSearch.toLowerCase()) ||
+                              u.email.toLowerCase().includes(firmUserSearch.toLowerCase())
+                          )
+                          .map((u) => (
+                            <tr key={u.id} className="hover:bg-slate-50/70 transition">
+                              <td className="py-3 px-4 font-semibold text-slate-900">
+                                <div className="flex items-center space-x-2">
+                                  <div className="w-7 h-7 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center font-bold text-xs uppercase flex-shrink-0">
+                                    {u.name.charAt(0)}
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-slate-900">{u.name}</p>
+                                    <p className="text-[10px] text-slate-400">
+                                      Created: {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 font-mono font-bold text-indigo-600 whitespace-nowrap">
+                                @{u.username}
+                              </td>
+                              <td className="py-3 px-4 text-slate-600 whitespace-nowrap">{u.email}</td>
+                              <td className="py-3 px-3 text-center whitespace-nowrap">
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-slate-100 text-slate-700 border border-slate-200">
+                                  {u.role}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-center whitespace-nowrap">
+                                <span
+                                  className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    u.isActive
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : 'bg-red-100 text-red-800'
+                                  }`}
+                                >
+                                  {u.isActive ? 'Active' : 'Disabled'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right whitespace-nowrap">
+                                <div className="flex items-center justify-end space-x-1.5">
+                                  <button
+                                    onClick={() => handleOpenResetPassword(u)}
+                                    className="px-2 py-1 text-[11px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 rounded-lg border border-amber-300 transition inline-flex items-center space-x-1"
+                                    title="Set or reset password for this user"
+                                  >
+                                    <KeyRound className="w-3 h-3 text-amber-700" />
+                                    <span>Reset Password</span>
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenEditFirmUser(u)}
+                                    className="p-1 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition"
+                                    title="Edit user details"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setDeleteUserTarget(u);
+                                      setDeleteUserError(null);
+                                    }}
+                                    className="p-1 text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition"
+                                    title="Delete user permanently"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
+                <span className="flex items-center">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 mr-1.5" />
+                  Super Admin Root Authority: Passwords and accounts update instantly in live memory and database.
+                </span>
+                <button
+                  onClick={() => setUsersModalFirm(null)}
+                  className="px-4 py-1.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SUBMODAL: ADD USER UNDER FIRM */}
+        {addUserOpen && usersModalFirm && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <h3 className="text-sm font-bold text-slate-900">
+                  Add User to {usersModalFirm.name}
+                </h3>
+                <button
+                  onClick={() => setAddUserOpen(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateFirmUser} className="p-6 space-y-3">
+                {addUserError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                    {addUserError}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newUserName}
+                    onChange={(e) => setNewUserName(e.target.value)}
+                    placeholder="e.g. Ramesh Patel"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Username (Login ID) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newUserUsername}
+                    onChange={(e) => setNewUserUsername(e.target.value)}
+                    placeholder="e.g. ramesh_apex"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Email *</label>
+                  <input
+                    type="email"
+                    required
+                    value={newUserEmail}
+                    onChange={(e) => setNewUserEmail(e.target.value)}
+                    placeholder="e.g. ramesh@example.com"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Initial Password *</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={newUserPassword}
+                      onChange={(e) => setNewUserPassword(e.target.value)}
+                      placeholder="Minimum 4 characters"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setNewUserPassword(generateStrongPassword())}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-0.5 text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md border"
+                    >
+                      Generate
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Role *</label>
+                  <select
+                    value={newUserRole}
+                    onChange={(e) => setNewUserRole(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  >
+                    <option value="owner">Firm Owner</option>
+                    <option value="manager">Manager</option>
+                    <option value="accountant">Accountant</option>
+                    <option value="staff">Staff</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => setAddUserOpen(false)}
+                    className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={addUserSubmitting}
+                    className="px-5 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-xl shadow-xs transition disabled:opacity-50"
+                  >
+                    {addUserSubmitting ? 'Adding User...' : 'Add User Account'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* SUBMODAL: EDIT USER IN FIRM */}
+        {editingFirmUser && usersModalFirm && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <h3 className="text-sm font-bold text-slate-900">
+                  Edit User: @{editingFirmUser.username}
+                </h3>
+                <button
+                  onClick={() => setEditingFirmUser(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditFirmUser} className="p-6 space-y-3">
+                {editUserError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                    {editUserError}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editUserName}
+                    onChange={(e) => setEditUserName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Username (Login ID) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editUserUsername}
+                    onChange={(e) => setEditUserUsername(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Email *</label>
+                  <input
+                    type="email"
+                    required
+                    value={editUserEmail}
+                    onChange={(e) => setEditUserEmail(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Role *</label>
+                    <select
+                      value={editUserRole}
+                      onChange={(e) => setEditUserRole(e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    >
+                      <option value="owner">Firm Owner</option>
+                      <option value="manager">Manager</option>
+                      <option value="accountant">Accountant</option>
+                      <option value="staff">Staff</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Account Status</label>
+                    <select
+                      value={editUserIsActive ? 'active' : 'disabled'}
+                      onChange={(e) => setEditUserIsActive(e.target.value === 'active')}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    >
+                      <option value="active">Active</option>
+                      <option value="disabled">Disabled</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditingFirmUser(null)}
+                    className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editUserSubmitting}
+                    className="px-5 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-xl shadow-xs transition disabled:opacity-50"
+                  >
+                    {editUserSubmitting ? 'Saving...' : 'Save User Changes'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* SUBMODAL: RESET USER PASSWORD */}
+        {resetPwUser && usersModalFirm && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-amber-50">
+                <div className="flex items-center space-x-2">
+                  <KeyRound className="w-5 h-5 text-amber-700" />
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Reset Password for @{resetPwUser.username}
+                    </h3>
+                    <p className="text-[11px] text-amber-800">{resetPwUser.name} ({usersModalFirm.name})</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setResetPwUser(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveResetPassword} className="p-6 space-y-4">
+                {resetPwSuccess && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 space-y-1">
+                    <p className="font-bold">✓ Password Reset Successfully!</p>
+                    <p className="font-mono bg-white p-2 rounded border border-emerald-200 select-all">
+                      {resetPwValue}
+                    </p>
+                    <p className="text-[11px] text-emerald-700">
+                      {resetPwCopied ? 'Copied to clipboard!' : 'Password updated.'}
+                    </p>
+                  </div>
+                )}
+
+                {resetPwError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                    {resetPwError}
+                  </div>
+                )}
+
+                {!resetPwSuccess && (
+                  <>
+                    <p className="text-xs text-slate-600">
+                      Enter a new password or use the auto-generated secure password below. Once set, the user can immediately log in with this password.
+                    </p>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        New Password
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          required
+                          value={resetPwValue}
+                          onChange={(e) => setResetPwValue(e.target.value)}
+                          className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-amber-400 pr-24"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setResetPwValue(generateStrongPassword())}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border flex items-center space-x-1"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Generate</span>
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => setResetPwUser(null)}
+                    className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                  >
+                    {resetPwSuccess ? 'Done' : 'Cancel'}
+                  </button>
+                  {!resetPwSuccess && (
+                    <button
+                      type="submit"
+                      disabled={resetPwSubmitting}
+                      className="px-5 py-2 text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 rounded-xl shadow-md shadow-amber-500/20 transition-all duration-200 disabled:opacity-50"
+                    >
+                      {resetPwSubmitting ? 'Updating...' : 'Set & Copy Password'}
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* SUBMODAL: DELETE USER CONFIRMATION */}
+        {deleteUserTarget && usersModalFirm && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full border border-slate-200 overflow-hidden flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-red-50">
+                <h3 className="text-sm font-bold text-slate-900">
+                  Delete User Account
+                </h3>
+                <button
+                  onClick={() => setDeleteUserTarget(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-3">
+                {deleteUserError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                    {deleteUserError}
+                  </div>
+                )}
+                <p className="text-xs text-slate-700">
+                  Are you sure you want to delete user <strong className="font-mono text-slate-900">@{deleteUserTarget.username}</strong> ({deleteUserTarget.name}) from {usersModalFirm.name}?
+                </p>
+                <p className="text-[11px] text-red-600">
+                  This user will no longer be able to log in.
+                </p>
+              </div>
+
+              <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setDeleteUserTarget(null)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteFirmUser}
+                  disabled={deleteUserSubmitting}
+                  className="px-5 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-xs transition disabled:opacity-50"
+                >
+                  {deleteUserSubmitting ? 'Deleting...' : 'Delete User'}
+                </button>
+              </div>
             </div>
           </div>
         )}

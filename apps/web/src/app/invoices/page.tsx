@@ -235,18 +235,18 @@ export default function InvoicesPage() {
         {/* Invoices List */}
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[950px]">
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 border-b uppercase font-semibold">
                 <tr>
-                  <th className="py-3 px-4">Invoice #</th>
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Customer</th>
-                  <th className="py-3 px-4">GSTIN</th>
-                  <th className="py-3 px-4 text-right">Taxable</th>
-                  <th className="py-3 px-4 text-right">Tax (GST)</th>
-                  <th className="py-3 px-4 text-right">Total (₹)</th>
-                  <th className="py-3 px-4 text-center">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Invoice #</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Date</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[180px]">Customer</th>
+                  <th className="py-3 px-4 whitespace-nowrap">GSTIN</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Taxable</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Tax (GST)</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Total (₹)</th>
+                  <th className="py-3 px-4 text-center whitespace-nowrap">Status</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
