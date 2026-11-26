@@ -15,10 +15,22 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
+  FileCheck,
+  CreditCard,
+  BookOpen,
   RotateCcw,
 } from 'lucide-react';
 
-type ImportModule = 'customers' | 'vendors' | 'items' | 'cheques' | 'accounts';
+type ImportModule =
+  | 'customers'
+  | 'vendors'
+  | 'items'
+  | 'invoices'
+  | 'bills'
+  | 'payments'
+  | 'cheques'
+  | 'accounts'
+  | 'journal';
 
 interface ModuleConfig {
   id: ImportModule;
@@ -72,9 +84,48 @@ const MODULE_CONFIGS: Record<ImportModule, ModuleConfig> = {
       ['Heavy Duty Tape 2 inch (Pack of 6)', '391910', 'PACK', '180', '135', '18', '80'],
     ],
   },
+  invoices: {
+    id: 'invoices',
+    label: 'Sales Invoices',
+    icon: FileText,
+    description: 'Bulk import customer sales invoices with GST tax calculations, automated double-entry postings, and sales register impact.',
+    endpoint: '/api/v1/imports/invoices',
+    filename: 'bizledger_sales_invoices_template.csv',
+    headers: ['InvoiceNo', 'Date', 'CustomerName', 'PlaceOfSupply', 'ItemDescription', 'HSNSAC', 'Qty', 'RateRupees', 'GSTRatePercent'],
+    sampleRows: [
+      ['INV-2026-001', '2026-11-20', 'Mahalaxmi Retailers', '27', 'A4 Copier Paper 75 GSM', '480256', '50', '280', '18'],
+      ['INV-2026-002', '2026-11-21', 'Balaji Trading Co', '27', 'Packaging Box 12x10x8', '481910', '100', '35', '18'],
+    ],
+  },
+  bills: {
+    id: 'bills',
+    label: 'Purchase Bills',
+    icon: FileCheck,
+    description: 'Bulk import supplier purchase bills with Input Tax Credit (ITC), HSN codes, and automatic accounts payable ledger postings.',
+    endpoint: '/api/v1/imports/bills',
+    filename: 'bizledger_purchase_bills_template.csv',
+    headers: ['BillNo', 'Date', 'VendorName', 'PlaceOfSupply', 'ItemDescription', 'HSNSAC', 'Qty', 'RateRupees', 'GSTRatePercent'],
+    sampleRows: [
+      ['BILL-9841', '2026-11-18', 'National Paper Mills', '27', 'Bulk Paper Raw Stock', '480256', '200', '190', '12'],
+      ['BILL-9842', '2026-11-19', 'Shree Ganesh Logistics', '27', 'Transport & Courier Service', '9965', '1', '12500', '18'],
+    ],
+  },
+  payments: {
+    id: 'payments',
+    label: 'Receipts & Payments',
+    icon: CreditCard,
+    description: 'Bulk import customer receipts (collections) and vendor payments (disbursements) via Bank, UPI, Cheque, or Cash.',
+    endpoint: '/api/v1/imports/payments',
+    filename: 'bizledger_payments_receipts_template.csv',
+    headers: ['Type', 'PartyName', 'Mode', 'Reference', 'AmountRupees', 'PayDate'],
+    sampleRows: [
+      ['receipt', 'Mahalaxmi Retailers', 'bank', 'NEFT-AXIS-991024', '15000', '2026-11-22'],
+      ['payment', 'National Paper Mills', 'bank', 'RTGS-HDFC-88201', '35000', '2026-11-23'],
+    ],
+  },
   cheques: {
     id: 'cheques',
-    label: 'Cheques & Post-Dated (PDC)',
+    label: 'Cheques & PDC',
     icon: CheckSquare,
     description: 'Bulk upload existing and post-dated cheques with cheque numbers, bank branches, dates, and amounts.',
     endpoint: '/api/v1/imports/cheques',
@@ -87,7 +138,7 @@ const MODULE_CONFIGS: Record<ImportModule, ModuleConfig> = {
   },
   accounts: {
     id: 'accounts',
-    label: 'Chart of Accounts & Ledgers',
+    label: 'Chart of Accounts',
     icon: PieChart,
     description: 'Import custom ledger heads, bank ledger accounts, expense/income categories, and opening balances.',
     endpoint: '/api/v1/imports/accounts',
@@ -97,6 +148,19 @@ const MODULE_CONFIGS: Record<ImportModule, ModuleConfig> = {
       ['1021', 'ICICI Bank Current A/c (Secondary)', 'asset', '250000'],
       ['5060', 'Vehicle Fuel & Transport Expense', 'expense', '0'],
       ['5070', 'Warehouse Electricity & Utilities', 'expense', '0'],
+    ],
+  },
+  journal: {
+    id: 'journal',
+    label: 'Journal Vouchers',
+    icon: BookOpen,
+    description: 'Bulk import manual double-entry journal vouchers, adjustments, depreciation, and inter-ledger transfers.',
+    endpoint: '/api/v1/imports/journal',
+    filename: 'bizledger_journal_vouchers_template.csv',
+    headers: ['EntryDate', 'Narration', 'DebitAccountCode', 'CreditAccountCode', 'AmountRupees', 'PartyName'],
+    sampleRows: [
+      ['2026-11-24', 'Office Equipment Depreciation', '5050', '1010', '4500', ''],
+      ['2026-11-25', 'Monthly Warehouse Electricity Payment', '5070', '1020', '8200', ''],
     ],
   },
 };
@@ -210,6 +274,45 @@ export default function BulkUploadPage() {
             stockQty: Number(r['OpeningStockQty'] || r['stockQty'] || 0),
           })),
         };
+      } else if (activeModule === 'invoices') {
+        payload = {
+          records: parsedRows.map((r) => ({
+            invoiceNo: r['InvoiceNo'] || r['invoiceNo'],
+            date: r['Date'] || r['date'],
+            customerName: r['CustomerName'] || r['customerName'],
+            placeOfSupply: r['PlaceOfSupply'] || r['placeOfSupply'],
+            itemDescription: r['ItemDescription'] || r['itemDescription'],
+            hsnSac: r['HSNSAC'] || r['hsnSac'],
+            qty: Number(r['Qty'] || r['qty'] || 1),
+            rate: Number(r['RateRupees'] || r['rateRupees'] || 0),
+            gstRate: Number(r['GSTRatePercent'] || r['gstRate'] || 18),
+          })),
+        };
+      } else if (activeModule === 'bills') {
+        payload = {
+          records: parsedRows.map((r) => ({
+            billNo: r['BillNo'] || r['billNo'],
+            date: r['Date'] || r['date'],
+            vendorName: r['VendorName'] || r['vendorName'],
+            placeOfSupply: r['PlaceOfSupply'] || r['placeOfSupply'],
+            itemDescription: r['ItemDescription'] || r['itemDescription'],
+            hsnSac: r['HSNSAC'] || r['hsnSac'],
+            qty: Number(r['Qty'] || r['qty'] || 1),
+            rate: Number(r['RateRupees'] || r['rateRupees'] || 0),
+            gstRate: Number(r['GSTRatePercent'] || r['gstRate'] || 18),
+          })),
+        };
+      } else if (activeModule === 'payments') {
+        payload = {
+          records: parsedRows.map((r) => ({
+            kind: (r['Type'] || 'receipt').toLowerCase() === 'payment' ? 'payment' : 'receipt',
+            partyName: r['PartyName'] || r['partyName'],
+            mode: (r['Mode'] || 'bank').toLowerCase(),
+            reference: r['Reference'] || r['reference'],
+            amount: Number(r['AmountRupees'] || r['amount'] || 0),
+            payDate: r['PayDate'] || r['payDate'],
+          })),
+        };
       } else if (activeModule === 'cheques') {
         payload = {
           records: parsedRows.map((r) => ({
@@ -230,6 +333,17 @@ export default function BulkUploadPage() {
             name: r['AccountName'] || r['name'],
             type: (r['Type'] || 'expense').toLowerCase(),
             openingBalance: Number(r['OpeningBalanceRupees'] || 0),
+          })),
+        };
+      } else if (activeModule === 'journal') {
+        payload = {
+          records: parsedRows.map((r) => ({
+            entryDate: r['EntryDate'] || r['entryDate'],
+            narration: r['Narration'] || r['narration'],
+            debitAccountCode: r['DebitAccountCode'] || r['debitAccountCode'],
+            creditAccountCode: r['CreditAccountCode'] || r['creditAccountCode'],
+            amount: Number(r['AmountRupees'] || r['amount'] || 0),
+            partyName: r['PartyName'] || r['partyName'],
           })),
         };
       }
@@ -267,7 +381,7 @@ export default function BulkUploadPage() {
               <div>
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Bulk Data Upload & Templates</h1>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Import existing master data, customer/vendor balance books, item stocks, and post-dated cheques via CSV.
+                  Comprehensive bulk import utility covering all 9 operational sections: Masters, Invoices, Bills, Collections, Cheques, Ledgers & Vouchers.
                 </p>
               </div>
             </div>
@@ -286,7 +400,7 @@ export default function BulkUploadPage() {
                   setActiveModule(mod.id);
                   handleReset();
                 }}
-                className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition ${
+                className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition ${
                   isActive
                     ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -299,135 +413,136 @@ export default function BulkUploadPage() {
           })}
         </div>
 
-        {/* Active Module Card */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 gap-4">
-            <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center space-x-2">
-                <currentConfig.icon className="w-5 h-5 text-blue-600" />
-                <span>Upload {currentConfig.label}</span>
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">{currentConfig.description}</p>
+        {/* Selected Module Detail Banner & CSV Download */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                Active Import Section
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                {currentConfig.label}
+              </span>
             </div>
-
-            <button
-              onClick={handleDownloadTemplate}
-              className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-900 transition"
-            >
-              <Download className="w-4 h-4" />
-              <span>Download CSV Template</span>
-            </button>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">
+              {currentConfig.label} Batch Importer
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl">
+              {currentConfig.description}
+            </p>
           </div>
 
-          {/* Alert Messages */}
-          {successMsg && (
-            <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 flex items-center space-x-3 text-emerald-700 dark:text-emerald-300 text-xs">
-              <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-              <span className="font-medium">{successMsg}</span>
-            </div>
-          )}
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleDownloadTemplate}
+              className="inline-flex items-center space-x-2 px-4 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 transition"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download {currentConfig.label} Template (.CSV)</span>
+            </button>
+          </div>
+        </div>
 
-          {errorMsg && (
-            <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 flex items-center space-x-3 text-red-700 dark:text-red-300 text-xs">
-              <AlertCircle className="w-5 h-5 flex-shrink-0" />
-              <span className="font-medium">{errorMsg}</span>
-            </div>
-          )}
+        {/* Success or Error Alerts */}
+        {successMsg && (
+          <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-center space-x-3">
+            <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-600" />
+            <div className="flex-1 font-medium">{successMsg}</div>
+          </div>
+        )}
 
-          {/* Upload Zone */}
-          {parsedRows.length === 0 ? (
-            <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 rounded-2xl p-8 text-center transition bg-slate-50/50 dark:bg-slate-800/30">
-              <input
-                type="file"
-                id="csvInput"
-                accept=".csv"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              <label htmlFor="csvInput" className="cursor-pointer flex flex-col items-center">
-                <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-600 flex items-center justify-center mb-3">
-                  <FileSpreadsheet className="w-6 h-6" />
-                </div>
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                  Click to select or drag and drop your completed CSV file
+        {errorMsg && (
+          <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 text-xs flex items-center space-x-3">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-600" />
+            <div className="flex-1 font-medium">{errorMsg}</div>
+          </div>
+        )}
+
+        {/* Upload Dropzone / File Picker */}
+        <div className="bg-white dark:bg-slate-900 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-8 text-center hover:border-blue-500 dark:hover:border-blue-400 transition">
+          <input
+            type="file"
+            id="csv-file-input"
+            accept=".csv,text/csv"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <label htmlFor="csv-file-input" className="cursor-pointer space-y-3 block">
+            <div className="w-12 h-12 mx-auto rounded-full bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <FileSpreadsheet className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                {fileName ? `Selected File: ${fileName}` : 'Click to select or drag and drop your CSV file'}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                CSV format only. Download the sample template above to ensure headers match.
+              </p>
+            </div>
+          </label>
+        </div>
+
+        {/* Data Preview Table */}
+        {parsedRows.length > 0 && (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Data Preview ({parsedRows.length} rows ready to import)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Review your parsed data before committing to live database ledgers.
                 </p>
-                <p className="text-xs text-slate-400 mt-1">
-                  Format must match template ({currentConfig.headers.join(', ')})
-                </p>
-              </label>
-            </div>
-          ) : (
-            /* Preview Table & Confirmation */
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2 text-xs text-slate-600 dark:text-slate-300">
-                  <FileText className="w-4 h-4 text-blue-600" />
-                  <span className="font-semibold">{fileName}</span>
-                  <span className="text-slate-400">•</span>
-                  <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">
-                    {parsedRows.length} rows ready
-                  </span>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={handleReset}
-                    className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-                  >
-                    Clear & Re-upload
-                  </button>
-                  <button
-                    onClick={handleConfirmImport}
-                    disabled={loading}
-                    className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-md shadow-blue-500/20 disabled:opacity-50 flex items-center space-x-1.5"
-                  >
-                    {loading ? (
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    ) : (
-                      <>
-                        <UploadCloud className="w-4 h-4" />
-                        <span>Confirm & Import {parsedRows.length} Records</span>
-                      </>
-                    )}
-                  </button>
-                </div>
               </div>
 
-              {/* Data Preview */}
-              <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto max-h-72">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 dark:bg-slate-800/70 text-slate-500 font-semibold sticky top-0 border-b border-slate-200 dark:border-slate-800">
-                    <tr>
-                      <th className="py-2.5 px-3 w-12 text-center">#</th>
-                      {columns.map((col) => (
-                        <th key={col} className="py-2.5 px-3">
-                          {col}
-                        </th>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={handleReset}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={handleConfirmImport}
+                  disabled={loading}
+                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition disabled:opacity-50"
+                >
+                  {loading ? 'Importing Data...' : `Confirm & Import ${parsedRows.length} Records`}
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold uppercase border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    {columns.map((col, idx) => (
+                      <th key={idx} className="py-2.5 px-3 whitespace-nowrap">
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {parsedRows.slice(0, 10).map((row, rIdx) => (
+                    <tr key={rIdx} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                      {columns.map((col, cIdx) => (
+                        <td key={cIdx} className="py-2 px-3 whitespace-nowrap text-slate-800 dark:text-slate-200">
+                          {row[col] || '—'}
+                        </td>
                       ))}
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
-                    {parsedRows.slice(0, 50).map((row, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                        <td className="py-2 px-3 text-center text-slate-400 font-sans">{idx + 1}</td>
-                        {columns.map((col) => (
-                          <td key={col} className="py-2 px-3 text-slate-700 dark:text-slate-300 truncate max-w-xs">
-                            {row[col] || '-'}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {parsedRows.length > 50 && (
-                <p className="text-[11px] text-slate-400 text-center italic">
-                  Showing first 50 rows of {parsedRows.length} total rows.
-                </p>
-              )}
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
-        </div>
+            {parsedRows.length > 10 && (
+              <p className="text-center text-xs text-slate-400">
+                Showing first 10 of {parsedRows.length} rows. All rows will be imported.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </AppShell>
   );
