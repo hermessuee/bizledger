@@ -2218,8 +2218,14 @@ export default function SuperAdminPage() {
             MODAL 7: EDIT DISTRIBUTOR FIRM (POWER USER)
         ========================================================================= */}
         {editingFirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden flex flex-col">
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+            style={{ zIndex: 100 }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden flex flex-col relative"
+              style={{ zIndex: 101 }}
+            >
               <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
                 <div className="flex items-center space-x-2.5">
                   <div className="p-2 bg-blue-100 text-blue-700 rounded-xl">
@@ -2339,8 +2345,14 @@ export default function SuperAdminPage() {
             MODAL 8: DELETE DISTRIBUTOR FIRM CONFIRMATION (POWER USER)
         ========================================================================= */}
         {deletingFirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden flex flex-col">
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+            style={{ zIndex: 100 }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden flex flex-col relative"
+              style={{ zIndex: 101 }}
+            >
               <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-red-50">
                 <div className="flex items-center space-x-2.5">
                   <div className="p-2 bg-red-100 text-red-600 rounded-xl">
@@ -2400,7 +2412,13 @@ export default function SuperAdminPage() {
             MODAL 9: FIRM USERS & CREDENTIALS GOVERNANCE (POWER USER)
         ========================================================================= */}
         {usersModalFirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+            style={{
+              zIndex: 50,
+              pointerEvents: (addUserOpen || editingFirmUser || resetPwUser || deleteUserTarget || editingFirm || deletingFirm) ? 'none' : 'auto',
+            }}
+          >
             <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full border border-slate-200 max-h-[90vh] flex flex-col overflow-hidden">
               {/* Modal Header */}
               <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-slate-50 via-indigo-50/30 to-slate-50">
@@ -2432,6 +2450,21 @@ export default function SuperAdminPage() {
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add User</span>
+                  </button>
+                  <button
+                    onClick={() => handleOpenEditFirmModal(usersModalFirm)}
+                    className="inline-flex items-center space-x-1 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-200 transition"
+                    title="Edit Distributor Firm Details"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Edit Firm</span>
+                  </button>
+                  <button
+                    onClick={() => handleOpenDeleteFirmModal(usersModalFirm)}
+                    className="p-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 transition inline-flex items-center"
+                    title="Delete Distributor Firm"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-red-600" />
                   </button>
                   <button
                     onClick={() => setUsersModalFirm(null)}
@@ -2581,8 +2614,14 @@ export default function SuperAdminPage() {
 
         {/* SUBMODAL: ADD USER UNDER FIRM */}
         {addUserOpen && usersModalFirm && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden flex flex-col">
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+            style={{ zIndex: 100, pointerEvents: 'auto' }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden flex flex-col relative z-[101]"
+              style={{ zIndex: 101 }}
+            >
               <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
                 <h3 className="text-sm font-bold text-slate-900">
                   Add User to {usersModalFirm.name}
@@ -2697,8 +2736,14 @@ export default function SuperAdminPage() {
 
         {/* SUBMODAL: EDIT USER IN FIRM */}
         {editingFirmUser && usersModalFirm && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden flex flex-col">
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+            style={{ zIndex: 100, pointerEvents: 'auto' }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden flex flex-col relative z-[101]"
+              style={{ zIndex: 101 }}
+            >
               <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
                 <h3 className="text-sm font-bold text-slate-900">
                   Edit User: @{editingFirmUser.username}
@@ -2802,8 +2847,14 @@ export default function SuperAdminPage() {
 
         {/* SUBMODAL: RESET USER PASSWORD */}
         {resetPwUser && usersModalFirm && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden flex flex-col">
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+            style={{ zIndex: 100, pointerEvents: 'auto' }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden flex flex-col relative z-[101]"
+              style={{ zIndex: 101 }}
+            >
               <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-amber-50">
                 <div className="flex items-center space-x-2">
                   <KeyRound className="w-5 h-5 text-amber-700" />
@@ -2897,8 +2948,14 @@ export default function SuperAdminPage() {
 
         {/* SUBMODAL: DELETE USER CONFIRMATION */}
         {deleteUserTarget && usersModalFirm && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full border border-slate-200 overflow-hidden flex flex-col">
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+            style={{ zIndex: 100, pointerEvents: 'auto' }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl max-w-sm w-full border border-slate-200 overflow-hidden flex flex-col relative z-[101]"
+              style={{ zIndex: 101 }}
+            >
               <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-red-50">
                 <h3 className="text-sm font-bold text-slate-900">
                   Delete User Account
