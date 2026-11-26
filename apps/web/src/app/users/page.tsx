@@ -11,6 +11,9 @@ import {
   Role,
   MenuKey,
 } from '@bizledger/shared';
+
+// Standard business tenant roles (Strictly excludes Super Admin from regular distributor logins)
+const TENANT_ROLES: Role[] = ['owner', 'accountant', 'staff', 'viewer'];
 import {
   Shield,
   UserPlus,
@@ -54,7 +57,11 @@ export default function UsersPage() {
     try {
       setLoading(true);
       const res = await api.get('/api/v1/users');
-      setUsers(res.users || []);
+      // Strictly filter out any Super Administrator or platform owner accounts from normal business views
+      const cleanUsers = (res.users || []).filter(
+        (u: any) => u.role !== 'super_admin' && u.username !== 'anoopsue'
+      );
+      setUsers(cleanUsers);
     } catch {}
     finally {
       setLoading(false);
@@ -323,7 +330,7 @@ export default function UsersPage() {
                     onChange={(e) => setRole(e.target.value as Role)}
                     className="w-full px-3 py-2 border rounded-lg outline-none bg-white font-medium"
                   >
-                    {ROLES.map((r) => (
+                    {TENANT_ROLES.map((r) => (
                       <option key={r} value={r}>
                         {r.toUpperCase()}
                       </option>

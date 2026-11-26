@@ -18,11 +18,11 @@ const users = new Hono<AppContext>();
 
 users.use('/*', authMiddleware);
 
-// GET /users - list all users for the current business
+// GET /users - list all users for the current business (strictly excludes any Super Admin)
 users.get('/', requirePermission('users', 'view'), (c) => {
   const businessId = c.get('businessId');
   const userList = memoryStore.users
-    .filter((u) => u.businessId === businessId)
+    .filter((u) => u.businessId === businessId && u.role !== 'super_admin' && u.username !== 'anoopsue')
     .map((u) => ({
       id: u.id,
       name: u.name,
@@ -50,6 +50,11 @@ users.post('/', requirePermission('users', 'create'), async (c) => {
   }
 
   const data = parsed.data;
+
+  // Strict: Super Admin can never be created from regular business user management
+  if (data.role === 'super_admin') {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Super Administrator cannot be created from tenant user management' } }, 403);
+  }
 
   // Check unique username and email
   const existingUser = memoryStore.users.find(
@@ -125,7 +130,7 @@ users.put('/:id', requirePermission('users', 'edit'), async (c) => {
   const businessId = c.get('businessId');
   const currentUser = c.get('user');
   const id = c.req.param('id');
-  const user = memoryStore.users.find((u) => u.id === id && u.businessId === businessId);
+  const user = memoryStore.users.find((u) => u.id === id && u.businessId === businessId && u.role !== 'super_admin');
   if (!user) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
@@ -137,6 +142,9 @@ users.put('/:id', requirePermission('users', 'edit'), async (c) => {
   }
 
   const data = parsed.data;
+  if (data.role === 'super_admin') {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot assign Super Administrator role' } }, 403);
+  }
   if (data.name !== undefined) user.name = data.name;
   if (data.email !== undefined) user.email = data.email;
   if (data.role !== undefined) user.role = data.role;
