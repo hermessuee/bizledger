@@ -88,6 +88,111 @@ documents.post('/', async (c) => {
   return c.json({ document: newDoc }, 201);
 });
 
+// PUT /documents/:id - Edit draft document (strictly rejects posted/locked documents)
+documents.put('/:id', async (c) => {
+  const businessId = c.get('businessId');
+  const user = c.get('user');
+  const id = c.req.param('id');
+
+  const doc = memoryStore.documents.find((d) => d.id === id && d.businessId === businessId);
+  if (!doc) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Document not found' } }, 404);
+  }
+
+  if (doc.status === 'posted') {
+    return c.json(
+      {
+        error: {
+          code: 'DOCUMENT_LOCKED',
+          message:
+            'This entry has already been Saved & Locked to accounting ledgers and CANNOT be edited. Edits are permanently locked to preserve accounting integrity.',
+        },
+      },
+      403
+    );
+  }
+
+  if (doc.status === 'void') {
+    return c.json(
+      {
+        error: {
+          code: 'DOCUMENT_VOID',
+          message: 'Voided documents cannot be edited.',
+        },
+      },
+      400
+    );
+  }
+
+  const body = await c.req.json();
+  if (body.docDate) doc.docDate = body.docDate;
+  if (body.dueDate !== undefined) doc.dueDate = body.dueDate;
+  if (body.partyId) doc.partyId = body.partyId;
+  if (body.placeOfSupply) doc.placeOfSupply = body.placeOfSupply;
+  if (body.docNo) doc.docNo = body.docNo;
+  if (body.subtotal !== undefined) doc.subtotal = body.subtotal;
+  if (body.taxTotal !== undefined) doc.taxTotal = body.taxTotal;
+  if (body.roundOff !== undefined) doc.roundOff = body.roundOff;
+  if (body.total !== undefined) doc.total = body.total;
+  if (Array.isArray(body.lines)) {
+    doc.lines = body.lines.map((l: any) => ({
+      id: l.id || crypto.randomUUID(),
+      ...l,
+      unit: l.unit || 'PCS',
+    }));
+  }
+
+  recordAuditLog({
+    businessId,
+    userId: user.id,
+    action: 'UPDATE_DOCUMENT',
+    entity: 'documents',
+    entityId: doc.id,
+    details: { docNo: doc.docNo, total: doc.total, status: doc.status },
+  });
+
+  return c.json({ success: true, document: doc });
+});
+
+// DELETE /documents/:id - Delete draft document (strictly rejects posted/locked documents)
+documents.delete('/:id', async (c) => {
+  const businessId = c.get('businessId');
+  const user = c.get('user');
+  const id = c.req.param('id');
+
+  const docIdx = memoryStore.documents.findIndex((d) => d.id === id && d.businessId === businessId);
+  if (docIdx === -1) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Document not found' } }, 404);
+  }
+
+  const doc = memoryStore.documents[docIdx];
+  if (doc.status === 'posted') {
+    return c.json(
+      {
+        error: {
+          code: 'DOCUMENT_LOCKED',
+          message:
+            'This entry has already been Saved & Locked to accounting ledgers and CANNOT be deleted. Please use Void to reverse posted entries.',
+        },
+      },
+      403
+    );
+  }
+
+  memoryStore.documents.splice(docIdx, 1);
+
+  recordAuditLog({
+    businessId,
+    userId: user.id,
+    action: 'DELETE_DOCUMENT',
+    entity: 'documents',
+    entityId: doc.id,
+    details: { docNo: doc.docNo },
+  });
+
+  return c.json({ success: true, message: `Draft document #${doc.docNo} deleted` });
+});
+
 // POST /documents/:id/post - Post document & create balanced double-entry journal lines!
 documents.post('/:id/post', async (c) => {
   const businessId = c.get('businessId');

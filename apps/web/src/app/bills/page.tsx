@@ -10,6 +10,7 @@ import {
   calculateRoundOff,
   GST_RATES,
   INDIAN_STATES,
+  ITEM_UNITS,
 } from '@bizledger/shared';
 import {
   Plus,
@@ -23,6 +24,10 @@ import {
   Calendar,
   AlertCircle,
   RotateCcw,
+  Lock,
+  Edit3,
+  Save,
+  AlertTriangle,
 } from 'lucide-react';
 
 export default function BillsPage() {
@@ -33,8 +38,9 @@ export default function BillsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  // New Purchase Bill Modal state
+  // Purchase Bill Modal state
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -47,6 +53,7 @@ export default function BillsPage() {
     {
       description: '',
       hsnSac: '',
+      unit: 'PCS',
       qty: 1,
       rateRupees: 0,
       gstRate: 18,
@@ -97,6 +104,7 @@ export default function BillsPage() {
       itemId: item.id,
       description: item.name,
       hsnSac: item.hsnSac || '',
+      unit: item.unit || 'PCS',
       rateRupees: (item.purchasePrice || item.salePrice || 0) / 100,
       gstRate: item.gstRate || 18,
     };
@@ -106,7 +114,7 @@ export default function BillsPage() {
   const addLine = () => {
     setLines([
       ...lines,
-      { description: '', hsnSac: '', qty: 1, rateRupees: 0, gstRate: 18 },
+      { description: '', hsnSac: '', unit: 'PCS', qty: 1, rateRupees: 0, gstRate: 18 },
     ]);
   };
 
@@ -138,6 +146,7 @@ export default function BillsPage() {
     return {
       description: line.description || 'Goods / Services',
       hsnSac: line.hsnSac || '',
+      unit: line.unit || 'PCS',
       qty,
       rate: Number(ratePaise),
       discount: 0,
@@ -153,17 +162,43 @@ export default function BillsPage() {
   const { roundOff, finalTotal } = calculateRoundOff(unroundedTotal);
 
   const resetForm = () => {
+    setEditingDocId(null);
     setVendorId('');
     setSupplierBillNo('');
     setDocDate(new Date().toISOString().split('T')[0]);
     setDueDate('');
     setPlaceOfSupply(business?.stateCode || '27');
-    setLines([{ description: '', hsnSac: '', qty: 1, rateRupees: 0, gstRate: 18 }]);
+    setLines([{ description: '', hsnSac: '', unit: 'PCS', qty: 1, rateRupees: 0, gstRate: 18 }]);
     setErrorMsg(null);
   };
 
-  const handleCreateBill = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleOpenEdit = (doc: any) => {
+    if (doc.status === 'posted') {
+      alert('⚠️ This entry is Saved & Locked. Posted accounting entries cannot be modified to preserve ledger integrity.');
+      return;
+    }
+    setEditingDocId(doc.id);
+    setVendorId(doc.partyId || '');
+    setSupplierBillNo(doc.docNo || '');
+    setDocDate(doc.docDate || new Date().toISOString().split('T')[0]);
+    setDueDate(doc.dueDate || '');
+    setPlaceOfSupply(doc.placeOfSupply || business?.stateCode || '27');
+    if (doc.lines && doc.lines.length > 0) {
+      setLines(
+        doc.lines.map((l: any) => ({
+          description: l.description,
+          hsnSac: l.hsnSac || '',
+          unit: l.unit || 'PCS',
+          qty: l.qty,
+          rateRupees: (l.rate || 0) / 100,
+          gstRate: l.gstRate || 18,
+        }))
+      );
+    }
+    setIsAddOpen(true);
+  };
+
+  const handleSaveBill = async (finalizeAndLock: boolean) => {
     if (!vendorId) {
       setErrorMsg('Please select a supplier / vendor.');
       return;
@@ -173,11 +208,18 @@ export default function BillsPage() {
       return;
     }
 
+    if (finalizeAndLock) {
+      const confirmed = window.confirm(
+        '⚠️ Warning: Once Saved & Finalized, this entry is permanently posted to accounting ledgers and CANNOT be edited. Are you sure you want to finalize and lock this entry?'
+      );
+      if (!confirmed) return;
+    }
+
     try {
       setSubmitting(true);
       setErrorMsg(null);
 
-      await api.post('/api/v1/documents', {
+      const payload = {
         docType: 'purchase_bill',
         docNo: supplierBillNo.trim() || undefined,
         docDate,
@@ -189,7 +231,23 @@ export default function BillsPage() {
         roundOff: Number(roundOff),
         total: Number(finalTotal),
         lines: computedLines,
-      });
+      };
+
+      let savedDocId = editingDocId;
+      if (editingDocId) {
+        // Update existing draft
+        const res = await api.put(`/api/v1/documents/${editingDocId}`, payload);
+        savedDocId = res.document?.id || editingDocId;
+      } else {
+        // Create new bill
+        const res = await api.post('/api/v1/documents', payload);
+        savedDocId = res.document?.id;
+      }
+
+      // If user selected "Save & Lock", post it immediately
+      if (finalizeAndLock && savedDocId) {
+        await api.post(`/api/v1/documents/${savedDocId}/post`);
+      }
 
       setIsAddOpen(false);
       resetForm();
@@ -204,7 +262,7 @@ export default function BillsPage() {
   const handlePost = async (id: string) => {
     if (
       !confirm(
-        'Post this purchase bill to ledger? This will record input tax credit (ITC) and update accounts payable with balanced double-entry lines.'
+        '⚠️ Warning: Once Saved & Finalized, this entry is permanently posted to accounting ledgers and CANNOT be edited. Are you sure you want to finalize and lock this entry?'
       )
     )
       return;
@@ -213,6 +271,16 @@ export default function BillsPage() {
       fetchBills();
     } catch (err: any) {
       alert(err.message || 'Failed to post purchase bill');
+    }
+  };
+
+  const handleDeleteDraft = async (id: string, docNo: string) => {
+    if (!confirm(`Delete draft bill #${docNo}? This will permanently remove this draft.`)) return;
+    try {
+      await api.delete(`/api/v1/documents/${id}`);
+      fetchBills();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete draft bill');
     }
   };
 
@@ -244,11 +312,14 @@ export default function BillsPage() {
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-              Purchase Bills
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <span>Purchase Bills</span>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-medium border border-amber-300/40">
+                Supplier Entries & ITC
+              </span>
             </h1>
             <p className="text-xs text-slate-500">
-              Record supplier bills, verify input tax credit (ITC), and track vendor payables
+              Record supplier bills, verify input tax credit (ITC), and track vendor payables with Unit Measures and Draft vs Lock controls
             </p>
           </div>
 
@@ -294,11 +365,11 @@ export default function BillsPage() {
                   <th className="py-3 px-4 whitespace-nowrap">Bill #</th>
                   <th className="py-3 px-4 whitespace-nowrap">Date</th>
                   <th className="py-3 px-4 whitespace-nowrap min-w-[180px]">Vendor / Supplier</th>
-                  <th className="py-3 px-4 whitespace-nowrap">GSTIN</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Items & Units</th>
                   <th className="py-3 px-4 text-right whitespace-nowrap">Taxable Value</th>
                   <th className="py-3 px-4 text-right whitespace-nowrap">ITC (GST)</th>
                   <th className="py-3 px-4 text-right whitespace-nowrap">Bill Total (₹)</th>
-                  <th className="py-3 px-4 text-center whitespace-nowrap">Status</th>
+                  <th className="py-3 px-4 text-center whitespace-nowrap">Status & Lock</th>
                   <th className="py-3 px-4 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
@@ -327,9 +398,27 @@ export default function BillsPage() {
                       <td className="py-3 px-4 font-mono whitespace-nowrap">{b.docDate}</td>
                       <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">
                         {b.partyName}
+                        {b.partyGstin && (
+                          <div className="text-[10px] text-slate-400 font-mono">{b.partyGstin}</div>
+                        )}
                       </td>
-                      <td className="py-3 px-4 font-mono text-[11px] text-slate-500 whitespace-nowrap">
-                        {b.partyGstin || '-'}
+                      <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
+                        {b.lines && b.lines.length > 0 ? (
+                          <div className="space-y-0.5">
+                            {b.lines.slice(0, 2).map((l: any, i: number) => (
+                              <div key={i} className="text-[11px] truncate max-w-[200px]">
+                                {l.description} ({l.qty} {l.unit || 'PCS'})
+                              </div>
+                            ))}
+                            {b.lines.length > 2 && (
+                              <div className="text-[10px] text-slate-400 italic">
+                                +{b.lines.length - 2} more item(s)
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right font-medium whitespace-nowrap">
                         ₹ {formatPaise(b.subtotal)}
@@ -341,38 +430,61 @@ export default function BillsPage() {
                         ₹ {formatPaise(b.total)}
                       </td>
                       <td className="py-3 px-4 text-center whitespace-nowrap">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            b.status === 'posted'
-                              ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                              : b.status === 'void'
-                              ? 'bg-red-100 text-red-800 border-red-200'
-                              : 'bg-amber-100 text-amber-800 border-amber-200'
-                          }`}
-                        >
-                          {b.status.toUpperCase()}
-                        </span>
+                        {b.status === 'posted' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300">
+                            <Lock className="w-2.5 h-2.5" />
+                            <span>LOCKED (POSTED)</span>
+                          </span>
+                        ) : b.status === 'void' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300 border border-red-200">
+                            <Ban className="w-2.5 h-2.5" />
+                            <span>VOIDED</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300">
+                            <FileCheck className="w-2.5 h-2.5" />
+                            <span>DRAFT (EDITABLE)</span>
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right space-x-1.5 whitespace-nowrap">
-                        {b.status === 'draft' && (
-                          <button
-                            onClick={() => handlePost(b.id)}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-xs transition inline-flex items-center space-x-1"
-                            title="Post bill to accounting ledgers"
-                          >
-                            <CheckCircle className="w-3 h-3" />
-                            <span>Post</span>
-                          </button>
-                        )}
-                        {b.status === 'posted' && (
+                        {b.status === 'draft' ? (
+                          <>
+                            <button
+                              onClick={() => handleOpenEdit(b)}
+                              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg text-[11px] font-bold shadow-xs transition inline-flex items-center space-x-1"
+                              title="Edit this draft bill"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              onClick={() => handlePost(b.id)}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-xs transition inline-flex items-center space-x-1"
+                              title="Save & Lock: Post bill to accounting ledgers permanently"
+                            >
+                              <Lock className="w-3 h-3" />
+                              <span>Save & Lock</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteDraft(b.id, b.docNo)}
+                              className="p-1 text-slate-400 hover:text-red-600 rounded transition inline-flex items-center"
+                              title="Delete draft bill"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : b.status === 'posted' ? (
                           <button
                             onClick={() => handleVoid(b.id)}
-                            className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-[11px] font-semibold transition"
+                            className="px-2 py-1 bg-red-100 dark:bg-red-950/50 hover:bg-red-200 text-red-700 dark:text-red-300 rounded-lg text-[11px] font-semibold transition"
                             title="Void bill & reverse ledger entries"
                           >
                             <Ban className="w-3 h-3 inline mr-1" />
                             <span>Void</span>
                           </button>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">No actions</span>
                         )}
                       </td>
                     </tr>
@@ -385,7 +497,7 @@ export default function BillsPage() {
       </div>
 
       {/* =========================================================================
-          RECORD PURCHASE BILL MODAL
+          RECORD / EDIT PURCHASE BILL MODAL
       ========================================================================= */}
       {isAddOpen && (
         <div
@@ -399,34 +511,43 @@ export default function BillsPage() {
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-amber-50/50 via-slate-50 to-slate-50 dark:from-slate-800/40 dark:to-slate-900">
               <div className="flex items-center space-x-2.5">
-                <div className="p-2 bg-amber-100 text-amber-700 rounded-xl">
-                  <FileCheck className="w-5 h-5" />
+                <div className="p-2 bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 rounded-xl">
+                  {editingDocId ? <Edit3 className="w-5 h-5" /> : <FileCheck className="w-5 h-5" />}
                 </div>
                 <div>
                   <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
-                    Record Purchase Bill (Supplier Entry)
+                    {editingDocId ? 'Edit Draft Purchase Bill' : 'Record Purchase Bill (Supplier Entry)'}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    Enter supplier tax invoice details, record Input Tax Credit (ITC), and credit Accounts Payable.
+                    Enter supplier tax invoice details, select unit measures (KG, BOX, PCS, etc.), and choose Save as Draft or Final Save & Lock.
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsAddOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Modal Body / Form */}
-            <form onSubmit={handleCreateBill} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
               {errorMsg && (
-                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center space-x-2">
+                <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 text-xs flex items-center space-x-2">
                   <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-500" />
                   <span>{errorMsg}</span>
                 </div>
               )}
+
+              {/* Warning Banner regarding Save vs Lock */}
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-xl flex items-start gap-2.5 text-slate-700 dark:text-slate-300 text-[11px]">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold text-amber-800 dark:text-amber-300">Important Accounting Workflow:</span>{' '}
+                  <strong>Save as Draft</strong> preserves the entry in editable state. <strong>Final Save & Lock</strong> permanently posts double-entry ledger transactions and locks the record against any future changes.
+                </div>
+              </div>
 
               {/* Supplier & Header Details */}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60">
@@ -535,10 +656,11 @@ export default function BillsPage() {
                     <thead className="bg-slate-50 dark:bg-slate-800/80 font-semibold text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
                       <tr>
                         <th className="py-2.5 px-3 w-1/3">Item / Description *</th>
-                        <th className="py-2.5 px-2 w-24">HSN/SAC</th>
+                        <th className="py-2.5 px-2 w-20">HSN/SAC</th>
                         <th className="py-2.5 px-2 w-20 text-center">Qty</th>
-                        <th className="py-2.5 px-2 w-28 text-right">Purchase Rate (₹)</th>
-                        <th className="py-2.5 px-2 w-24 text-center">GST %</th>
+                        <th className="py-2.5 px-2 w-20 text-center">Unit</th>
+                        <th className="py-2.5 px-2 w-24 text-right">Rate (₹)</th>
+                        <th className="py-2.5 px-2 w-20 text-center">GST %</th>
                         <th className="py-2.5 px-3 text-right">Taxable</th>
                         <th className="py-2.5 px-3 text-right">Total (₹)</th>
                         <th className="py-2.5 px-2 w-10 text-center"></th>
@@ -562,7 +684,7 @@ export default function BillsPage() {
                                     </option>
                                     {items.map((i) => (
                                       <option key={i.id} value={i.id}>
-                                        {i.name}
+                                        {i.name} ({i.unit || 'PCS'})
                                       </option>
                                     ))}
                                   </select>
@@ -609,6 +731,24 @@ export default function BillsPage() {
                                 }}
                                 className="w-full px-2 py-1 text-xs text-center border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                               />
+                            </td>
+
+                            <td className="py-2 px-2">
+                              <select
+                                value={line.unit || 'PCS'}
+                                onChange={(e) => {
+                                  const upd = [...lines];
+                                  upd[idx].unit = e.target.value;
+                                  setLines(upd);
+                                }}
+                                className="w-full px-2 py-1 text-xs text-center font-semibold border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-400 bg-amber-50/60 dark:bg-slate-800 text-amber-900 dark:text-amber-300"
+                              >
+                                {ITEM_UNITS.map((u) => (
+                                  <option key={u} value={u}>
+                                    {u}
+                                  </option>
+                                ))}
+                              </select>
                             </td>
 
                             <td className="py-2 px-2">
@@ -701,24 +841,46 @@ export default function BillsPage() {
                 </div>
               </div>
 
-              {/* Form Buttons */}
-              <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setIsAddOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2 text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 rounded-xl shadow-md shadow-amber-500/20 transition disabled:opacity-50"
-                >
-                  {submitting ? 'Saving Purchase Bill...' : 'Save Purchase Bill'}
-                </button>
+              {/* Form Action Buttons: Draft vs Final Save & Lock */}
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Draft = Editable later | Save & Lock = Immutable posted entry</span>
+                </div>
+
+                <div className="flex items-center space-x-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddOpen(false)}
+                    className="px-3.5 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+                  >
+                    Cancel
+                  </button>
+
+                  {/* 1. SAVE AS DRAFT BUTTON */}
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => handleSaveBill(false)}
+                    className="px-4 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-xl transition inline-flex items-center space-x-1.5 disabled:opacity-50"
+                  >
+                    <Save className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Save as Draft (Editable)</span>
+                  </button>
+
+                  {/* 2. FINAL SAVE & LOCK BUTTON */}
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => handleSaveBill(true)}
+                    className="px-5 py-2 text-xs font-bold text-slate-950 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 rounded-xl shadow-md shadow-emerald-500/20 transition inline-flex items-center space-x-1.5 disabled:opacity-50"
+                  >
+                    <Lock className="w-3.5 h-3.5 text-slate-950" />
+                    <span>Final Save & Lock (Cannot Edit)</span>
+                  </button>
+                </div>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

@@ -17,6 +17,7 @@ export const MENU_KEYS = [
   'reports',
   'gst',
   'bulk_upload',
+  'master_governance',
   'admin_portal',
   'settings',
   'users',
@@ -40,11 +41,31 @@ export const MENU_LABELS: Record<MenuKey, string> = {
   reports: 'Reports',
   gst: 'GST Reports',
   bulk_upload: 'Bulk Upload & Templates',
+  master_governance: 'Master Hub & Governance',
   admin_portal: 'Distributor Portal (Super Admin)',
   settings: 'Company Settings',
   users: 'User Management',
   audit_log: 'Audit Log',
 };
+
+export const ITEM_UNITS = [
+  'PCS',
+  'BOX',
+  'KG',
+  'LTR',
+  'MTR',
+  'BAG',
+  'SET',
+  'NOS',
+  'ROLL',
+  'PAC',
+  'DOZ',
+  'RIM',
+  'TON',
+  'QTL',
+  'UNT',
+] as const;
+export type ItemUnit = typeof ITEM_UNITS[number];
 
 export const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'income', 'expense'] as const;
 export type AccountType = typeof ACCOUNT_TYPES[number];

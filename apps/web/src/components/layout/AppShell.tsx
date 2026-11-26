@@ -39,6 +39,7 @@ import {
   X,
   UploadCloud,
   ShieldAlert,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 const MENU_ICONS: Record<MenuKey, React.ComponentType<{ className?: string }>> = {
@@ -57,6 +58,7 @@ const MENU_ICONS: Record<MenuKey, React.ComponentType<{ className?: string }>> =
   reports: BarChart3,
   gst: FileSpreadsheet,
   bulk_upload: UploadCloud,
+  master_governance: SlidersHorizontal,
   admin_portal: ShieldAlert,
   settings: Settings,
   users: Shield,
@@ -79,6 +81,7 @@ const MENU_ROUTES: Record<MenuKey, string> = {
   reports: '/reports',
   gst: '/gst',
   bulk_upload: '/bulk-upload',
+  master_governance: '/masters',
   admin_portal: '/super-admin',
   settings: '/settings',
   users: '/users',

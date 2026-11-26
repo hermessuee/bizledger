@@ -43,6 +43,7 @@ export const documentLineSchema = z.object({
   itemId: z.string().optional().nullable(),
   description: z.string().min(1, 'Description is required'),
   hsnSac: z.string().optional().nullable(),
+  unit: z.string().optional().default('PCS'),
   qty: z.number().positive('Quantity must be greater than 0'),
   rate: z.number().int().nonnegative('Rate must be non-negative'), // in paise
   discount: z.number().int().nonnegative().default(0), // in paise

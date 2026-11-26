@@ -74,6 +74,63 @@ partiesRoute.post('/', requirePermission('customers', 'create'), async (c) => {
   return c.json({ party: newParty }, 201);
 });
 
+// PUT /parties/:id - Edit customer or vendor details (including enable/disable isActive)
+partiesRoute.put('/:id', async (c) => {
+  const businessId = c.get('businessId');
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const body = await c.req.json();
+
+  const party = memoryStore.parties.find((p) => p.id === id && p.businessId === businessId);
+  if (!party) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Party not found' } }, 404);
+  }
+
+  if (body.name !== undefined) party.name = body.name.trim();
+  if (body.gstin !== undefined) party.gstin = body.gstin ? body.gstin.trim().toUpperCase() : null;
+  if (body.phone !== undefined) party.phone = body.phone ? body.phone.trim() : null;
+  if (body.email !== undefined) party.email = body.email ? body.email.trim() : null;
+  if (body.address !== undefined) party.address = body.address ? body.address.trim() : null;
+  if (body.creditDays !== undefined) party.creditDays = Number(body.creditDays) || 30;
+  if (body.isActive !== undefined) party.isActive = Boolean(body.isActive);
+
+  recordAuditLog({
+    businessId,
+    userId: user.id,
+    action: 'UPDATE_PARTY',
+    entity: 'parties',
+    entityId: party.id,
+    details: { name: party.name, isActive: party.isActive },
+  });
+
+  return c.json({ success: true, party });
+});
+
+// DELETE /parties/:id - Delete party
+partiesRoute.delete('/:id', async (c) => {
+  const businessId = c.get('businessId');
+  const user = c.get('user');
+  const id = c.req.param('id');
+
+  const idx = memoryStore.parties.findIndex((p) => p.id === id && p.businessId === businessId);
+  if (idx === -1) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Party not found' } }, 404);
+  }
+
+  const deleted = memoryStore.parties.splice(idx, 1)[0];
+
+  recordAuditLog({
+    businessId,
+    userId: user.id,
+    action: 'DELETE_PARTY',
+    entity: 'parties',
+    entityId: id,
+    details: { name: deleted.name },
+  });
+
+  return c.json({ success: true, message: 'Party removed successfully' });
+});
+
 // Items & Services
 export const itemsRoute = new Hono<AppContext>();
 itemsRoute.use('/*', authMiddleware);
@@ -111,6 +168,64 @@ itemsRoute.post('/', requirePermission('items', 'create'), async (c) => {
   });
 
   return c.json({ item: newItem }, 201);
+});
+
+// PUT /items/:id - Edit item details (including unit and enable/disable isActive)
+itemsRoute.put('/:id', async (c) => {
+  const businessId = c.get('businessId');
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const body = await c.req.json();
+
+  const item = memoryStore.items.find((i) => i.id === id && i.businessId === businessId);
+  if (!item) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Item not found' } }, 404);
+  }
+
+  if (body.name !== undefined) item.name = body.name.trim();
+  if (body.hsnSac !== undefined) item.hsnSac = body.hsnSac ? body.hsnSac.trim() : null;
+  if (body.unit !== undefined) item.unit = body.unit.trim().toUpperCase() || 'PCS';
+  if (body.salePrice !== undefined) item.salePrice = Math.round(Number(body.salePrice));
+  if (body.purchasePrice !== undefined) item.purchasePrice = Math.round(Number(body.purchasePrice));
+  if (body.gstRate !== undefined) item.gstRate = Number(body.gstRate);
+  if (body.stockQty !== undefined) item.stockQty = Number(body.stockQty);
+  if (body.isActive !== undefined) item.isActive = Boolean(body.isActive);
+
+  recordAuditLog({
+    businessId,
+    userId: user.id,
+    action: 'UPDATE_ITEM',
+    entity: 'items',
+    entityId: item.id,
+    details: { name: item.name, unit: item.unit, isActive: item.isActive },
+  });
+
+  return c.json({ success: true, item });
+});
+
+// DELETE /items/:id - Delete item
+itemsRoute.delete('/:id', async (c) => {
+  const businessId = c.get('businessId');
+  const user = c.get('user');
+  const id = c.req.param('id');
+
+  const idx = memoryStore.items.findIndex((i) => i.id === id && i.businessId === businessId);
+  if (idx === -1) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Item not found' } }, 404);
+  }
+
+  const deleted = memoryStore.items.splice(idx, 1)[0];
+
+  recordAuditLog({
+    businessId,
+    userId: user.id,
+    action: 'DELETE_ITEM',
+    entity: 'items',
+    entityId: id,
+    details: { name: deleted.name },
+  });
+
+  return c.json({ success: true, message: 'Item removed successfully' });
 });
 
 // Chart of Accounts

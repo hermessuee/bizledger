@@ -70,6 +70,7 @@ export interface Item {
   gstRate: number;
   trackStock: boolean;
   stockQty: number;
+  isActive?: boolean;
 }
 
 export interface ChequeItem {
