@@ -158,39 +158,34 @@ export default function ReportsPage() {
     };
   }, [filteredEntries]);
 
-  // Export Detailed Report to Excel (.xlsx) with proper formatting and column widths
-  const handleExportDetailedExcel = () => {
-    if (!detailedData) return;
+  // Helper to build the exact 16-column dataset requested by user
+  const getDetailedReportRows = () => {
+    if (!detailedData) return null;
     const dist = detailedData.distributor || business;
     const summary = computedSummary;
     const list = filteredEntries;
 
-    // Structured Array of Arrays (AOA) for XLSX
-    const dataRows: (string | number)[][] = [
-      // Top Heading: Distributor Name in Bold
-      [dist?.name ? String(dist.name).toUpperCase() : 'DISTRIBUTOR FIRM'],
-      [
-        `GSTIN: ${dist?.gstin || 'Unregistered'}`,
-        `State: ${dist?.stateCode || '32'} - Kerala`,
-        `Address: ${dist?.address || 'Kerala'}`,
-      ],
-      ['DETAILED TRADING & PROFIT & LOSS REGISTER (ITEM-WISE DAYBOOK)'],
-      [
-        `Period From: ${detailedFilters.fromDate || 'Beginning'}`,
-        `Period To: ${detailedFilters.toDate || 'Present'}`,
-        `Generated: ${new Date().toLocaleString('en-IN')}`,
-        `Total Lines: ${list.length}`,
-      ],
-      [
-        `Total Purchases (Debit): Rs. ${(summary.totalPurchasesDebit / 100).toFixed(2)}`,
-        `Total Sales (Credit): Rs. ${(summary.totalSalesCredit / 100).toFixed(2)}`,
-        `Net Trading Margin: Rs. ${(summary.netProfit / 100).toFixed(2)}`,
-        `Total Qty: ${summary.totalQty}`,
-        `Total Tax: Rs. ${(summary.totalTax / 100).toFixed(2)}`,
-      ],
-      [], // Blank separator row
-      // Column Headers (Exact 16 distinct columns)
-      [
+    const pad16 = (arr: any[]) => {
+      const res = arr.slice();
+      while (res.length < 16) res.push('');
+      return res.slice(0, 16);
+    };
+
+    const distName = (dist?.name || 'DISTRIBUTOR FIRM').toUpperCase();
+    const gstin = dist?.gstin || 'Unregistered';
+    const state = `${dist?.stateCode || '32'} - Kerala`;
+    const addr = dist?.address || 'Kerala';
+
+    const now = new Date();
+    const genTimeStr = `${now.toLocaleDateString('en-GB')}, ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).toLowerCase()}`;
+
+    const rows: (string | number)[][] = [
+      pad16([distName]),
+      pad16([`GSTIN: ${gstin} State: ${state} Address: ${addr}`]),
+      pad16(['DETAILED TRADING & PROFIT & LOSS REGISTER (ITEM-WISE DAYBOOK)']),
+      pad16([`Period From: ${detailedFilters.fromDate || 'Beginning'} Period To: ${detailedFilters.toDate || 'Present'} Generated: ${genTimeStr} Total Lines: ${list.length}`]),
+      pad16([`Total Purchases (Debit): Rs. ${(summary.totalPurchasesDebit / 100).toFixed(2)} Total Sales (Credit): Rs. ${(summary.totalSalesCredit / 100).toFixed(2)} Net Trading Margin: Rs. ${(summary.netProfit / 100).toFixed(2)} Total Qty: ${summary.totalQty} Total Tax: Rs. ${(summary.totalTax / 100).toFixed(2)}`]),
+      pad16([
         'Sl No',
         'Date',
         'Voucher / Doc #',
@@ -207,9 +202,8 @@ export default function ReportsPage() {
         'Debit [Purchases] (INR)',
         'Credit [Sales] (INR)',
         'Net Balance (INR)',
-      ],
-      // Data Rows with proper types
-      ...list.map((e: any, idx: number) => [
+      ]),
+      ...list.map((e: any, idx: number) => pad16([
         idx + 1,
         e.docDate,
         e.docNo,
@@ -226,40 +220,42 @@ export default function ReportsPage() {
         e.debit ? e.debit / 100 : 0,
         e.credit ? e.credit / 100 : 0,
         e.runningBalance ? e.runningBalance / 100 : 0,
-      ]),
-      [], // Blank separator row
-      // Grand Totals Row
-      [
+      ])),
+      pad16([]),
+      pad16([
         'GRAND TOTALS',
-        '',
-        '',
-        '',
-        '',
-        '',
+        '', '', '', '', '',
         `${list.length} item lines`,
         '',
         summary.totalQty,
-        '',
-        '',
-        '',
+        '', '', '',
         summary.totalTax / 100,
         summary.totalPurchasesDebit / 100,
         summary.totalSalesCredit / 100,
         summary.netProfit / 100,
-      ],
+      ]),
     ];
 
-    const ws = XLSX.utils.aoa_to_sheet(dataRows);
+    return { dist, rows };
+  };
+
+  // Export Detailed Report to Excel (.xlsx) with proper formatting and column widths
+  const handleExportDetailedExcel = () => {
+    const data = getDetailedReportRows();
+    if (!data) return;
+    const { dist, rows } = data;
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
 
     // Set generous column widths so no cell text is clipped or squished in Excel
     ws['!cols'] = [
       { wch: 8 },  // Sl No
       { wch: 14 }, // Date
-      { wch: 24 }, // Voucher / Doc # (fits BILL/2026-27/0002 comfortably!)
+      { wch: 24 }, // Voucher / Doc #
       { wch: 16 }, // Entry Type
       { wch: 28 }, // Party Name
-      { wch: 20 }, // Party GSTIN
-      { wch: 32 }, // Item Description
+      { wch: 18 }, // Party GSTIN
+      { wch: 30 }, // Item Description
       { wch: 12 }, // HSN/SAC
       { wch: 14 }, // Quantity
       { wch: 10 }, // Unit
@@ -278,6 +274,36 @@ export default function ReportsPage() {
     const safeFrom = (detailedFilters.fromDate || 'start').replace(/-/g, '');
     const safeTo = (detailedFilters.toDate || 'end').replace(/-/g, '');
     XLSX.writeFile(wb, `Detailed_Trading_Report_${safeDist}_${safeFrom}_to_${safeTo}.xlsx`, { bookType: 'xlsx' });
+  };
+
+  // Export Detailed Report to CSV with exact 16-column format
+  const handleExportDetailedCsv = () => {
+    const data = getDetailedReportRows();
+    if (!data) return;
+    const { dist, rows } = data;
+
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return '';
+      const s = String(val);
+      if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+
+    const csvContent = '\uFEFF' + rows.map((r) => r.map(escapeCsv).join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeDist = (dist?.name || 'Distributor').replace(/[^a-zA-Z0-9]/g, '_');
+    const safeFrom = (detailedFilters.fromDate || 'start').replace(/-/g, '');
+    const safeTo = (detailedFilters.toDate || 'end').replace(/-/g, '');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Detailed_Trading_Report_${safeDist}_${safeFrom}_to_${safeTo}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Export Detailed Report to PDF (Formatted Letterhead with Distributor name on top & date range)
@@ -420,10 +446,19 @@ export default function ReportsPage() {
                 <button
                   onClick={handleExportDetailedExcel}
                   className="inline-flex items-center px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition"
-                  title="Export complete item-by-item entries to Excel/CSV with distributor header and date range"
+                  title="Export complete item-by-item entries to Microsoft Excel (.xlsx) with generous column widths"
                 >
                   <FileSpreadsheet className="w-4 h-4 mr-1.5" />
                   <span>Export to Excel (.xlsx)</span>
+                </button>
+
+                <button
+                  onClick={handleExportDetailedCsv}
+                  className="inline-flex items-center px-3 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                  title="Export exact 16-column format to CSV file"
+                >
+                  <Download className="w-4 h-4 mr-1.5" />
+                  <span>Export CSV</span>
                 </button>
 
                 <button
