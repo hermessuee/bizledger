@@ -9,9 +9,9 @@ interface CacheEntry {
 
 class ApiClient {
   private accessToken: string | null = null;
-  // High-performance client-side response cache (TTL in milliseconds)
+  // High-performance client-side response cache (TTL set to 0 for real-time ledger consistency)
   private cache = new Map<string, CacheEntry>();
-  private defaultCacheTtl = 8000; // 8 seconds TTL for ultra-fast instant menu/page transitions
+  private defaultCacheTtl = 0; // 0ms TTL: always query live backend for financial/audit accuracy
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -42,13 +42,13 @@ class ApiClient {
   async request<T = any>(
     endpoint: string,
     options: RequestInit = {},
-    bypassCache = false
+    bypassCache = true
   ): Promise<T> {
     const method = options.method || 'GET';
     const cacheKey = `${method}:${endpoint}`;
 
-    // 1. Fast Cache Read for GET requests (Instant 0ms UI load)
-    if (method === 'GET' && !bypassCache) {
+    // 1. Fast Cache Read for GET requests (disabled when TTL=0 for 100% live consistency)
+    if (method === 'GET' && !bypassCache && this.defaultCacheTtl > 0) {
       const cached = this.cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < this.defaultCacheTtl) {
         return cached.data as T;
@@ -58,6 +58,8 @@ class ApiClient {
     const token = this.getToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
       ...(options.headers as Record<string, string>),
     };
 
@@ -73,11 +75,21 @@ class ApiClient {
 
     let activeBizId: string | null = null;
     if (!isAuthEndpoint && typeof window !== 'undefined') {
-      const stored = localStorage.getItem('hermes_active_business_id');
-      if (stored && stored !== 'all' && stored !== '00000000-0000-0000-0000-000000000000') {
-        activeBizId = stored;
-        headers['x-business-id'] = activeBizId;
-      }
+      try {
+        const storedUser = localStorage.getItem('hermes_user_session');
+        const userObj = storedUser ? JSON.parse(storedUser) : null;
+        // Only Super Admin is permitted to dynamically switch distributor context
+        if (userObj?.role === 'super_admin' || userObj?.username === 'anoopsue') {
+          const stored = localStorage.getItem('hermes_active_business_id');
+          if (stored && stored !== 'all' && stored !== '00000000-0000-0000-0000-000000000000') {
+            activeBizId = stored;
+            headers['x-business-id'] = activeBizId;
+          }
+        } else {
+          // Individual distributor logins are strictly pinned to their own firm
+          localStorage.removeItem('hermes_active_business_id');
+        }
+      } catch {}
     }
 
     let url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
@@ -92,6 +104,7 @@ class ApiClient {
     let response: Response;
     try {
       response = await fetch(url, {
+        cache: 'no-store',
         ...options,
         headers,
         signal: options.signal || controller.signal,

@@ -266,6 +266,17 @@ documents.delete('/:id', async (c) => {
     );
   }
 
+  // Cascade delete linked journal entries
+  memoryStore.journalEntries = memoryStore.journalEntries.filter(
+    (j) => j.id !== doc.entryId && j.sourceId !== doc.id
+  );
+  // Cascade clean up any payment allocations
+  for (const p of memoryStore.payments) {
+    if (p.allocations) {
+      p.allocations = p.allocations.filter((a) => a.documentId !== doc.id);
+    }
+  }
+
   memoryStore.documents.splice(docIdx, 1);
 
   recordAuditLog({
@@ -295,95 +306,21 @@ documents.post('/:id/post', async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: `Document is already ${doc.status}` } }, 400);
   }
 
-  // Find standard accounts for the document's distributor
-  const docBusinessId = doc.businessId;
-  const findAccountByCode = (code: string) => memoryStore.accounts.find((a) => a.businessId === docBusinessId && a.code === code);
-
-  const arAccount = findAccountByCode('1030'); // Accounts Receivable
-  const apAccount = findAccountByCode('2010'); // Accounts Payable
-  const salesAccount = findAccountByCode('4010'); // Sales Income
-  const purchasesAccount = findAccountByCode('5010'); // Purchases
-  const outputCgst = findAccountByCode('2030');
-  const outputSgst = findAccountByCode('2031');
-  const outputIgst = findAccountByCode('2032');
-  const inputCgst = findAccountByCode('1050');
-  const inputSgst = findAccountByCode('1051');
-  const inputIgst = findAccountByCode('1052');
-  const roundOffAccount = findAccountByCode('5050'); // Round Off Expense / Adjustment
-
-  if (!arAccount || !apAccount || !salesAccount || !purchasesAccount) {
-    return c.json({ error: { code: 'CONFIG_ERROR', message: 'Standard system accounts not found for distributor' } }, 500);
-  }
-
-  const lines: Array<{ accountId: string; partyId?: string | null; debit: number; credit: number }> = [];
-
-  // Calculate tax totals per CGST, SGST, IGST across lines
-  let totalCgst = 0;
-  let totalSgst = 0;
-  let totalIgst = 0;
-  for (const l of doc.lines) {
-    totalCgst += l.cgst;
-    totalSgst += l.sgst;
-    totalIgst += l.igst;
-  }
-
-  if (doc.docType === 'sales_invoice') {
-    lines.push({ accountId: arAccount.id, partyId: doc.partyId, debit: doc.total, credit: 0 });
-    lines.push({ accountId: salesAccount.id, debit: 0, credit: doc.subtotal });
-
-    if (totalCgst > 0 && outputCgst) lines.push({ accountId: outputCgst.id, debit: 0, credit: totalCgst });
-    if (totalSgst > 0 && outputSgst) lines.push({ accountId: outputSgst.id, debit: 0, credit: totalSgst });
-    if (totalIgst > 0 && outputIgst) lines.push({ accountId: outputIgst.id, debit: 0, credit: totalIgst });
-
-    if (doc.roundOff !== 0 && roundOffAccount) {
-      if (doc.roundOff > 0) {
-        lines.push({ accountId: roundOffAccount.id, debit: 0, credit: doc.roundOff });
-      } else {
-        lines.push({ accountId: roundOffAccount.id, debit: -doc.roundOff, credit: 0 });
-      }
-    }
-  } else if (doc.docType === 'purchase_bill') {
-    lines.push({ accountId: purchasesAccount.id, debit: doc.subtotal, credit: 0 });
-
-    if (totalCgst > 0 && inputCgst) lines.push({ accountId: inputCgst.id, debit: totalCgst, credit: 0 });
-    if (totalSgst > 0 && inputSgst) lines.push({ accountId: inputSgst.id, debit: totalSgst, credit: 0 });
-    if (totalIgst > 0 && inputIgst) lines.push({ accountId: inputIgst.id, debit: totalIgst, credit: 0 });
-
-    if (doc.roundOff !== 0 && roundOffAccount) {
-      if (doc.roundOff > 0) {
-        lines.push({ accountId: roundOffAccount.id, debit: doc.roundOff, credit: 0 });
-      } else {
-        lines.push({ accountId: roundOffAccount.id, debit: 0, credit: -doc.roundOff });
-      }
-    }
-
-    lines.push({ accountId: apAccount.id, partyId: doc.partyId, debit: 0, credit: doc.total });
-  }
-
-  // Create journal entry with strict double-entry guarantee
-  const journalEntry = memoryStore.createJournalEntry({
-    businessId: docBusinessId,
-    entryDate: doc.docDate,
-    narration: `Posting for ${doc.docType} #${doc.docNo}`,
-    sourceType: doc.docType,
-    sourceId: doc.id,
-    createdBy: user.id,
-    lines,
-  });
-
-  doc.status = 'posted';
-  doc.entryId = journalEntry.id;
+  const updatedDoc = memoryStore.postDocument(doc.id, user.id);
+  const journalEntry = updatedDoc?.entryId
+    ? memoryStore.journalEntries.find((j) => j.id === updatedDoc.entryId)
+    : null;
 
   recordAuditLog({
-    businessId: docBusinessId,
+    businessId: doc.businessId,
     userId: user.id,
     action: 'POST_DOCUMENT',
     entity: 'documents',
     entityId: doc.id,
-    details: { docNo: doc.docNo, journalEntryNo: journalEntry.entryNo },
+    details: { docNo: doc.docNo, journalEntryNo: journalEntry?.entryNo },
   });
 
-  return c.json({ success: true, document: doc, journalEntry });
+  return c.json({ success: true, document: updatedDoc, journalEntry });
 });
 
 // POST /documents/:id/void - Void document and reverse journal entry

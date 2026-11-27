@@ -20,6 +20,7 @@ export class MemoryStore {
   private dbPool: Pool | null = null;
   private databaseUrl: string | null = null;
   public isHydrated = false;
+  public lastHydratedAt = 0;
   private isPersisting = false;
   private pendingPersist = false;
 
@@ -524,6 +525,97 @@ export class MemoryStore {
     return created;
   }
 
+  // Post document and generate double-entry ledger journal entries
+  postDocument(docId: string, userId?: string) {
+    const doc = this.documents.find((d) => d.id === docId);
+    if (!doc || doc.status === 'posted') return doc;
+
+    const docBusinessId = doc.businessId;
+    const findAccountByCode = (code: string) =>
+      this.accounts.find((a) => a.businessId === docBusinessId && a.code === code);
+
+    const arAccount = findAccountByCode('1030'); // Accounts Receivable
+    const apAccount = findAccountByCode('2010'); // Accounts Payable
+    const salesAccount = findAccountByCode('4010'); // Sales Income
+    const purchasesAccount = findAccountByCode('5010'); // Purchases
+    const outputCgst = findAccountByCode('2030');
+    const outputSgst = findAccountByCode('2031');
+    const outputIgst = findAccountByCode('2032');
+    const inputCgst = findAccountByCode('1050');
+    const inputSgst = findAccountByCode('1051');
+    const inputIgst = findAccountByCode('1052');
+    const roundOffAccount = findAccountByCode('5050'); // Round Off Expense / Adjustment
+
+    if (!arAccount || !apAccount || !salesAccount || !purchasesAccount) {
+      console.warn(`[MemoryStore] Standard accounts missing for business ${docBusinessId}, seeding defaults...`);
+      this.seedDefaultAccountsForBusiness(docBusinessId);
+    }
+
+    const reArAccount = findAccountByCode('1030') || this.accounts[0];
+    const reApAccount = findAccountByCode('2010') || this.accounts[0];
+    const reSalesAccount = findAccountByCode('4010') || this.accounts[0];
+    const rePurchasesAccount = findAccountByCode('5010') || this.accounts[0];
+    const reOutputCgst = findAccountByCode('2030');
+    const reOutputSgst = findAccountByCode('2031');
+    const reOutputIgst = findAccountByCode('2032');
+    const reInputCgst = findAccountByCode('1050');
+    const reInputSgst = findAccountByCode('1051');
+    const reInputIgst = findAccountByCode('1052');
+    const reRoundOffAccount = findAccountByCode('5050');
+
+    const lines: Array<{ accountId: string; partyId?: string | null; debit: number; credit: number }> = [];
+    let totalCgst = 0;
+    let totalSgst = 0;
+    let totalIgst = 0;
+    for (const l of doc.lines) {
+      totalCgst += l.cgst || 0;
+      totalSgst += l.sgst || 0;
+      totalIgst += l.igst || 0;
+    }
+
+    if (doc.docType === 'sales_invoice') {
+      lines.push({ accountId: reArAccount.id, partyId: doc.partyId, debit: doc.total, credit: 0 });
+      lines.push({ accountId: reSalesAccount.id, debit: 0, credit: doc.subtotal });
+      if (totalCgst > 0 && reOutputCgst) lines.push({ accountId: reOutputCgst.id, debit: 0, credit: totalCgst });
+      if (totalSgst > 0 && reOutputSgst) lines.push({ accountId: reOutputSgst.id, debit: 0, credit: totalSgst });
+      if (totalIgst > 0 && reOutputIgst) lines.push({ accountId: reOutputIgst.id, debit: 0, credit: totalIgst });
+      if (doc.roundOff !== 0 && reRoundOffAccount) {
+        if (doc.roundOff > 0) lines.push({ accountId: reRoundOffAccount.id, debit: 0, credit: doc.roundOff });
+        else lines.push({ accountId: reRoundOffAccount.id, debit: -doc.roundOff, credit: 0 });
+      }
+    } else if (doc.docType === 'purchase_bill') {
+      lines.push({ accountId: rePurchasesAccount.id, debit: doc.subtotal, credit: 0 });
+      if (totalCgst > 0 && reInputCgst) lines.push({ accountId: reInputCgst.id, debit: totalCgst, credit: 0 });
+      if (totalSgst > 0 && reInputSgst) lines.push({ accountId: reInputSgst.id, debit: totalSgst, credit: 0 });
+      if (totalIgst > 0 && reInputIgst) lines.push({ accountId: reInputIgst.id, debit: totalIgst, credit: 0 });
+      if (doc.roundOff !== 0 && reRoundOffAccount) {
+        if (doc.roundOff > 0) lines.push({ accountId: reRoundOffAccount.id, debit: doc.roundOff, credit: 0 });
+        else lines.push({ accountId: reRoundOffAccount.id, debit: 0, credit: -doc.roundOff });
+      }
+      lines.push({ accountId: reApAccount.id, partyId: doc.partyId, debit: 0, credit: doc.total });
+    }
+
+    try {
+      const journalEntry = this.createJournalEntry({
+        businessId: docBusinessId,
+        entryDate: doc.docDate,
+        narration: `Posting for ${doc.docType} #${doc.docNo}`,
+        sourceType: doc.docType,
+        sourceId: doc.id,
+        createdBy: userId || null,
+        lines,
+      });
+
+      doc.status = 'posted';
+      doc.entryId = journalEntry.id;
+      return doc;
+    } catch (e) {
+      console.error(`[MemoryStore] Failed to post document ${doc.id}:`, e);
+      doc.status = 'posted';
+      return doc;
+    }
+  }
+
   seedDefaultAccountsForBusiness(businessId: string) {
     const defaultAccounts: Array<Omit<Account, 'id'>> = [
       { businessId, code: '1010', name: 'Cash in Hand', type: 'asset', isSystem: true, isActive: true },
@@ -668,12 +760,15 @@ export class MemoryStore {
       `);
 
       const res = await pool.query(
-        `SELECT data FROM system_store_snapshot WHERE key = $1`,
+        `SELECT data, updated_at FROM system_store_snapshot WHERE key = $1`,
         ['app_state']
       );
 
       if (res.rows && res.rows.length > 0 && res.rows[0].data) {
         const snapshot = res.rows[0].data;
+        if (res.rows[0].updated_at) {
+          this.lastHydratedAt = new Date(res.rows[0].updated_at).getTime();
+        }
         if (Array.isArray(snapshot.businesses) && snapshot.businesses.length > 0) {
           this.businesses = snapshot.businesses;
         }
@@ -715,7 +810,7 @@ export class MemoryStore {
           this.docCounters = snapshot.docCounters;
         }
         this.isHydrated = true;
-        console.log(`[MemoryStore] Successfully hydrated from PostgreSQL: ${this.businesses.length} businesses, ${this.users.length} users.`);
+        console.log(`[MemoryStore] Successfully hydrated from PostgreSQL: ${this.businesses.length} businesses, ${this.users.length} users, ${this.documents.length} documents.`);
         return true;
       } else {
         // First run: persist current in-memory seed state
@@ -725,6 +820,35 @@ export class MemoryStore {
       }
     } catch (err) {
       console.error('[MemoryStore] Failed to hydrate from database:', err);
+      return false;
+    }
+  }
+
+  // Cross-instance synchronization check: pulls fresh snapshot if database has newer data
+  public async syncIfNeeded(url?: string): Promise<boolean> {
+    if (url) this.setDatabaseUrl(url);
+    const pool = this.getPool();
+    if (!pool) return false;
+
+    if (!this.isHydrated) {
+      return await this.hydrateFromDatabase();
+    }
+
+    try {
+      const res = await pool.query(
+        `SELECT updated_at FROM system_store_snapshot WHERE key = $1`,
+        ['app_state']
+      );
+      if (res.rows && res.rows.length > 0 && res.rows[0].updated_at) {
+        const dbTimestamp = new Date(res.rows[0].updated_at).getTime();
+        if (dbTimestamp > this.lastHydratedAt) {
+          console.log(`[MemoryStore] Out of sync instance detected (DB: ${dbTimestamp} > Local: ${this.lastHydratedAt}). Reloading latest snapshot...`);
+          return await this.hydrateFromDatabase();
+        }
+      }
+      return true;
+    } catch (err) {
+      console.error('[MemoryStore] syncIfNeeded error:', err);
       return false;
     }
   }
@@ -754,12 +878,17 @@ export class MemoryStore {
         docCounters: this.docCounters,
       };
 
-      await pool.query(
+      const persistRes = await pool.query(
         `INSERT INTO system_store_snapshot (key, data, updated_at) 
          VALUES ($1, $2, now()) 
-         ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+         ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+         RETURNING updated_at`,
         ['app_state', JSON.stringify(snapshot)]
       );
+
+      if (persistRes.rows && persistRes.rows[0]?.updated_at) {
+        this.lastHydratedAt = new Date(persistRes.rows[0].updated_at).getTime();
+      }
 
       // Dual-sync to relational businesses table so Neon Console tables view reflects all distributors
       await pool.query(`

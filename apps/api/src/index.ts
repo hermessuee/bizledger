@@ -31,12 +31,12 @@ app.use('*', async (c, next) => {
   await next();
 });
 
-// Persistent database hydration & auto-save middleware for Neon PostgreSQL
+// Persistent database hydration & real-time synchronization middleware for Neon PostgreSQL
 app.use('*', async (c, next) => {
   const dbUrl = c.env?.DATABASE_URL || process.env.DATABASE_URL;
-  if (dbUrl && !memoryStore.isHydrated) {
+  if (dbUrl) {
     memoryStore.setDatabaseUrl(dbUrl);
-    await memoryStore.hydrateFromDatabase();
+    await memoryStore.syncIfNeeded(dbUrl);
   }
   await next();
   if (dbUrl && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(c.req.method) && c.res.status < 400) {
@@ -58,6 +58,8 @@ app.use('*', async (c, next) => {
       'X-Requested-With',
       'Accept',
       'Origin',
+      'Cache-Control',
+      'Pragma',
     ],
     exposeHeaders: ['Content-Length', 'X-Total-Count', 'X-Business-Id'],
     credentials: true,
@@ -67,13 +69,16 @@ app.use('*', async (c, next) => {
 // Explicit preflight handler for OPTIONS requests
 app.options('*', (c) => c.body(null, 204));
 
-// Standard Security Headers
+// Standard Security & Strict Real-Time No-Cache Headers (Prevent any stale data caching)
 app.use('*', async (c, next) => {
   await next();
   c.header('X-Content-Type-Options', 'nosniff');
   c.header('X-Frame-Options', 'DENY');
   c.header('X-XSS-Protection', '1; mode=block');
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  c.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  c.header('Pragma', 'no-cache');
+  c.header('Expires', '0');
 });
 
 // Standard Error Handler

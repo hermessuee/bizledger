@@ -772,9 +772,15 @@ admin.delete('/transactions/:type/:id', async (c) => {
     const idx = memoryStore.documents.findIndex((d) => d.id === id);
     if (idx === -1) return c.json({ error: { code: 'NOT_FOUND', message: 'Document not found' } }, 404);
     const removed = memoryStore.documents.splice(idx, 1)[0];
-    if (removed.entryId) {
-      const jIdx = memoryStore.journalEntries.findIndex((j) => j.id === removed.entryId);
-      if (jIdx !== -1) memoryStore.journalEntries.splice(jIdx, 1);
+    // Cascade delete any linked journal entries
+    memoryStore.journalEntries = memoryStore.journalEntries.filter(
+      (j) => j.id !== removed.entryId && j.sourceId !== removed.id
+    );
+    // Cascade remove any payment allocations referencing this document
+    for (const p of memoryStore.payments) {
+      if (p.allocations) {
+        p.allocations = p.allocations.filter((a) => a.documentId !== removed.id);
+      }
     }
     recordAuditLog({
       businessId: removed.businessId,
@@ -789,10 +795,10 @@ admin.delete('/transactions/:type/:id', async (c) => {
     const idx = memoryStore.payments.findIndex((p) => p.id === id);
     if (idx === -1) return c.json({ error: { code: 'NOT_FOUND', message: 'Payment not found' } }, 404);
     const removed = memoryStore.payments.splice(idx, 1)[0];
-    if (removed.entryId) {
-      const jIdx = memoryStore.journalEntries.findIndex((j) => j.id === removed.entryId);
-      if (jIdx !== -1) memoryStore.journalEntries.splice(jIdx, 1);
-    }
+    // Cascade delete any linked journal entries
+    memoryStore.journalEntries = memoryStore.journalEntries.filter(
+      (j) => j.id !== removed.entryId && j.sourceId !== removed.id
+    );
     recordAuditLog({
       businessId: removed.businessId,
       userId: currentUser.id,

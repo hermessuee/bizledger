@@ -103,6 +103,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('bizledger_refresh_token', data.refreshToken);
       localStorage.setItem('hermes_user_session', JSON.stringify(data.user));
       localStorage.setItem('hermes_business_session', JSON.stringify(data.business));
+      if (data.user?.role !== 'super_admin' && data.user?.username !== 'anoopsue') {
+        localStorage.removeItem('hermes_active_business_id');
+      }
     }
     setUser(data.user);
     setBusiness(data.business);
