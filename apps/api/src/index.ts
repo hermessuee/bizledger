@@ -31,6 +31,19 @@ app.use('*', async (c, next) => {
   await next();
 });
 
+// Persistent database hydration & auto-save middleware for Neon PostgreSQL
+app.use('*', async (c, next) => {
+  const dbUrl = c.env?.DATABASE_URL || process.env.DATABASE_URL;
+  if (dbUrl && !memoryStore.isHydrated) {
+    memoryStore.setDatabaseUrl(dbUrl);
+    await memoryStore.hydrateFromDatabase();
+  }
+  await next();
+  if (dbUrl && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(c.req.method) && c.res.status < 400) {
+    await memoryStore.persistToDatabase().catch((e) => console.error('[Persistence] Auto-save error:', e));
+  }
+});
+
 // CORS middleware allowing GitHub Pages, custom domains, and localhost
 app.use('*', async (c, next) => {
   return cors({
@@ -77,8 +90,16 @@ app.onError((err, c) => {
   );
 });
 
-// Health check
-app.get('/api/health', (c) => c.json({ status: 'ok', time: new Date().toISOString() }));
+// Health check with PostgreSQL persistence status
+app.get('/api/health', (c) =>
+  c.json({
+    status: 'ok',
+    time: new Date().toISOString(),
+    database: Boolean(c.env?.DATABASE_URL || process.env.DATABASE_URL),
+    hydrated: memoryStore.isHydrated,
+    businessesCount: memoryStore.businesses.length,
+  })
+);
 
 // Mount API v1 routes
 app.route('/api/v1/auth', authRoutes);

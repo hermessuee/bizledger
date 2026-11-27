@@ -222,4 +222,14 @@ describe('API Integration & Accounting Workflows', () => {
     const delData = await delRes.json();
     expect(delData.success).toBe(true);
   });
+
+  it('supports persistent database snapshots gracefully without DATABASE_URL', async () => {
+    const { memoryStore } = await import('../src/store');
+    expect(typeof memoryStore.hydrateFromDatabase).toBe('function');
+    expect(typeof memoryStore.persistToDatabase).toBe('function');
+    const hydrateResult = await memoryStore.hydrateFromDatabase();
+    expect(hydrateResult).toBe(false);
+    const persistResult = await memoryStore.persistToDatabase();
+    expect(persistResult).toBe(false);
+  });
 });

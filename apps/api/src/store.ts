@@ -13,9 +13,16 @@ import {
   DocumentType,
 } from '@bizledger/shared';
 import { hashPassword, verifyPassword, generateRandomHex } from './crypto';
+import { Pool } from '@neondatabase/serverless';
 
-// In-memory persistent data store for local dev, testing, and fallback
+// In-memory data store with Neon PostgreSQL persistence
 export class MemoryStore {
+  private dbPool: Pool | null = null;
+  private databaseUrl: string | null = null;
+  public isHydrated = false;
+  private isPersisting = false;
+  private pendingPersist = false;
+
   businesses: Business[] = [
     {
       id: '11111111-1111-1111-1111-111111111111',
@@ -615,7 +622,156 @@ export class MemoryStore {
     };
     this.users.push(ownerUser);
 
+    this.persistToDatabase().catch((e) =>
+      console.error('[MemoryStore] Failed to persist after createBusiness:', e)
+    );
+
     return { business: newBusiness, user: ownerUser };
+  }
+
+  public setDatabaseUrl(url?: string | null) {
+    if (url && url !== this.databaseUrl) {
+      this.databaseUrl = url;
+      try {
+        if (this.dbPool) {
+          this.dbPool.end().catch(() => {});
+        }
+        this.dbPool = new Pool({ connectionString: url });
+      } catch (e) {
+        console.error('[MemoryStore] Failed to create Neon Pool:', e);
+      }
+    }
+  }
+
+  public getPool(): Pool | null {
+    if (!this.dbPool) {
+      const url = this.databaseUrl || (typeof process !== 'undefined' ? process.env?.DATABASE_URL : null);
+      if (url) {
+        this.setDatabaseUrl(url);
+      }
+    }
+    return this.dbPool;
+  }
+
+  public async hydrateFromDatabase(url?: string): Promise<boolean> {
+    if (url) this.setDatabaseUrl(url);
+    const pool = this.getPool();
+    if (!pool) return false;
+
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS system_store_snapshot (
+          key TEXT PRIMARY KEY,
+          data JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+      `);
+
+      const res = await pool.query(
+        `SELECT data FROM system_store_snapshot WHERE key = $1`,
+        ['app_state']
+      );
+
+      if (res.rows && res.rows.length > 0 && res.rows[0].data) {
+        const snapshot = res.rows[0].data;
+        if (Array.isArray(snapshot.businesses) && snapshot.businesses.length > 0) {
+          this.businesses = snapshot.businesses;
+        }
+        if (Array.isArray(snapshot.users) && snapshot.users.length > 0) {
+          this.users = snapshot.users;
+          // Ensure platform super admin is always present
+          if (!this.users.some((u) => u.role === 'super_admin' || u.username === 'anoopsue')) {
+            const allPerms: any = {};
+            for (const key of MENU_KEYS) {
+              allPerms[key] = { canView: true, canCreate: true, canEdit: true, canDelete: true, canExport: true };
+            }
+            this.users.unshift({
+              id: '00000000-0000-0000-0000-000000000001',
+              businessId: 'all',
+              name: 'Platform Super Administrator (anoopsue)',
+              email: 'anoopsue@bizledger.in',
+              username: 'anoopsue',
+              passwordHash: 'pbkdf2$10000$1234567890abcdef1234567890abcdef$61e7cb401d0fd7d3fa9b8b8b4f5e4fdaced4e39c085f8532b9a02b3be30ae01d',
+              role: 'super_admin' as Role,
+              isActive: true,
+              mustChangePassword: false,
+              failedAttempts: 0,
+              lockedUntil: null,
+              lastLoginAt: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
+              permissions: allPerms,
+            });
+          }
+        }
+        if (Array.isArray(snapshot.parties)) this.parties = snapshot.parties;
+        if (Array.isArray(snapshot.items)) this.items = snapshot.items;
+        if (Array.isArray(snapshot.accounts)) this.accounts = snapshot.accounts;
+        if (Array.isArray(snapshot.documents)) this.documents = snapshot.documents;
+        if (Array.isArray(snapshot.cheques)) this.cheques = snapshot.cheques;
+        if (Array.isArray(snapshot.payments)) this.payments = snapshot.payments;
+        if (Array.isArray(snapshot.journalEntries)) this.journalEntries = snapshot.journalEntries;
+        if (Array.isArray(snapshot.auditLogs)) this.auditLogs = snapshot.auditLogs;
+        if (snapshot.docCounters && typeof snapshot.docCounters === 'object') {
+          this.docCounters = snapshot.docCounters;
+        }
+        this.isHydrated = true;
+        console.log(`[MemoryStore] Successfully hydrated from PostgreSQL: ${this.businesses.length} businesses, ${this.users.length} users.`);
+        return true;
+      } else {
+        // First run: persist current in-memory seed state
+        await this.persistToDatabase();
+        this.isHydrated = true;
+        return true;
+      }
+    } catch (err) {
+      console.error('[MemoryStore] Failed to hydrate from database:', err);
+      return false;
+    }
+  }
+
+  public async persistToDatabase(): Promise<boolean> {
+    const pool = this.getPool();
+    if (!pool) return false;
+
+    if (this.isPersisting) {
+      this.pendingPersist = true;
+      return true;
+    }
+
+    this.isPersisting = true;
+    try {
+      const snapshot = {
+        businesses: this.businesses,
+        users: this.users,
+        parties: this.parties,
+        items: this.items,
+        accounts: this.accounts,
+        documents: this.documents,
+        cheques: this.cheques,
+        payments: this.payments,
+        journalEntries: this.journalEntries,
+        auditLogs: this.auditLogs.slice(-500),
+        docCounters: this.docCounters,
+      };
+
+      await pool.query(
+        `INSERT INTO system_store_snapshot (key, data, updated_at) 
+         VALUES ($1, $2, now()) 
+         ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+        ['app_state', JSON.stringify(snapshot)]
+      );
+      this.isHydrated = true;
+      return true;
+    } catch (err) {
+      console.error('[MemoryStore] Failed to persist snapshot to database:', err);
+      return false;
+    } finally {
+      this.isPersisting = false;
+      if (this.pendingPersist) {
+        this.pendingPersist = false;
+        this.persistToDatabase().catch(() => {});
+      }
+    }
   }
 }
 
