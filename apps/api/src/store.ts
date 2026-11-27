@@ -760,6 +760,60 @@ export class MemoryStore {
          ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
         ['app_state', JSON.stringify(snapshot)]
       );
+
+      // Dual-sync to relational businesses table so Neon Console tables view reflects all distributors
+      await pool.query(`
+        INSERT INTO businesses (id, name, gstin, state_code, address, currency, fy_start_month, settings, status, enabled_menus)
+        SELECT 
+          (b->>'id')::uuid,
+          b->>'name',
+          b->>'gstin',
+          b->>'stateCode',
+          b->>'address',
+          COALESCE(b->>'currency', 'INR'),
+          COALESCE((b->>'fyStartMonth')::int, 4),
+          COALESCE(b->'settings', '{}'::jsonb),
+          COALESCE(b->>'status', 'active'),
+          COALESCE(b->'enabledMenus', '[]'::jsonb)
+        FROM system_store_snapshot, jsonb_array_elements(data->'businesses') as b
+        WHERE key = 'app_state'
+        ON CONFLICT (id) DO UPDATE SET
+          name = EXCLUDED.name,
+          gstin = EXCLUDED.gstin,
+          state_code = EXCLUDED.state_code,
+          address = EXCLUDED.address,
+          currency = EXCLUDED.currency,
+          fy_start_month = EXCLUDED.fy_start_month,
+          settings = EXCLUDED.settings,
+          status = EXCLUDED.status,
+          enabled_menus = EXCLUDED.enabled_menus
+      `).catch((e) => console.warn('[MemoryStore] businesses table sync warning:', e));
+
+      // Dual-sync to relational users table so Neon Console tables view reflects all users
+      await pool.query(`
+        INSERT INTO users (id, business_id, name, email, username, password_hash, role, is_active, must_change_password)
+        SELECT 
+          (u->>'id')::uuid,
+          CASE WHEN u->>'businessId' = 'all' THEN NULL ELSE (u->>'businessId')::uuid END,
+          u->>'name',
+          u->>'email',
+          u->>'username',
+          u->>'passwordHash',
+          u->>'role',
+          COALESCE((u->>'isActive')::boolean, true),
+          COALESCE((u->>'mustChangePassword')::boolean, false)
+        FROM system_store_snapshot, jsonb_array_elements(data->'users') as u
+        WHERE key = 'app_state'
+        ON CONFLICT (id) DO UPDATE SET
+          name = EXCLUDED.name,
+          email = EXCLUDED.email,
+          username = EXCLUDED.username,
+          password_hash = EXCLUDED.password_hash,
+          role = EXCLUDED.role,
+          is_active = EXCLUDED.is_active,
+          must_change_password = EXCLUDED.must_change_password
+      `).catch((e) => console.warn('[MemoryStore] users table sync warning:', e));
+
       this.isHydrated = true;
       return true;
     } catch (err) {
