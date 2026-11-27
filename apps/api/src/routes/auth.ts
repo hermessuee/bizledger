@@ -161,7 +161,7 @@ auth.post('/register', async (c) => {
   const { business, user } = memoryStore.createBusiness({
     name: businessName.trim(),
     gstin: gstin ? gstin.trim().toUpperCase() : undefined,
-    stateCode: stateCode || (gstin ? gstin.trim().slice(0, 2) : '27'),
+    stateCode: stateCode || (gstin ? gstin.trim().slice(0, 2) : '32'),
     address: address ? address.trim() : undefined,
     ownerName: ownerName.trim(),
     ownerEmail: email.trim().toLowerCase(),

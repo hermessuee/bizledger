@@ -14,7 +14,7 @@ export default function RegisterPage() {
 
   const [businessName, setBusinessName] = useState('');
   const [gstin, setGstin] = useState('');
-  const [stateCode, setStateCode] = useState('27'); // Maharashtra default
+  const [stateCode, setStateCode] = useState('32'); // Kerala default
   const [address, setAddress] = useState('');
 
   const [ownerName, setOwnerName] = useState('');
@@ -138,7 +138,7 @@ export default function RegisterPage() {
                     type="text"
                     value={gstin}
                     onChange={(e) => handleGstinChange(e.target.value)}
-                    placeholder="27AAPCA1234M1Z5"
+                    placeholder="32AAPCA1234M1Z5"
                     className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm uppercase font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>

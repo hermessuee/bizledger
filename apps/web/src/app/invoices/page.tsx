@@ -48,7 +48,7 @@ export default function InvoicesPage() {
 
   const [partyId, setPartyId] = useState('');
   const [docNo, setDocNo] = useState('');
-  const [placeOfSupply, setPlaceOfSupply] = useState('27'); // Default
+  const [placeOfSupply, setPlaceOfSupply] = useState(business?.stateCode || '32'); // Kerala default
   const [docDate, setDocDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState('');
   const [lines, setLines] = useState<any[]>([
@@ -140,7 +140,7 @@ export default function InvoicesPage() {
   };
 
   // Compute live totals
-  const isInterState = placeOfSupply !== (business?.stateCode || '27');
+  const isInterState = placeOfSupply !== (business?.stateCode || '32');
   let computedSubtotal = 0n;
   let computedTaxTotal = 0n;
   const computedLines = lines.map((line) => {
@@ -181,7 +181,7 @@ export default function InvoicesPage() {
     setDocNo('');
     setDocDate(new Date().toISOString().split('T')[0]);
     setDueDate('');
-    setPlaceOfSupply(business?.stateCode || '27');
+    setPlaceOfSupply(business?.stateCode || '32');
     setLines([{ description: '', hsnSac: '', unit: 'PCS', qty: 1, rateRupees: 0, gstRate: 18 }]);
     setErrorMsg(null);
   };
@@ -196,7 +196,7 @@ export default function InvoicesPage() {
     setDocNo(doc.docNo || '');
     setDocDate(doc.docDate || new Date().toISOString().split('T')[0]);
     setDueDate(doc.dueDate || '');
-    setPlaceOfSupply(doc.placeOfSupply || business?.stateCode || '27');
+    setPlaceOfSupply(doc.placeOfSupply || business?.stateCode || '32');
     setTargetBusinessId(doc.businessId || '');
     if (doc.lines && doc.lines.length > 0) {
       setLines(

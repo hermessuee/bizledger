@@ -68,7 +68,7 @@ admin.post('/businesses', async (c) => {
   const { business, user } = memoryStore.createBusiness({
     name: businessName.trim(),
     gstin: gstin ? gstin.trim().toUpperCase() : undefined,
-    stateCode: stateCode || (gstin ? gstin.trim().slice(0, 2) : '27'),
+    stateCode: stateCode || (gstin ? gstin.trim().slice(0, 2) : '32'),
     address: address ? address.trim() : undefined,
     ownerName: ownerName.trim(),
     ownerEmail: email.trim().toLowerCase(),
@@ -590,7 +590,7 @@ admin.post('/transactions', async (c) => {
       docNo,
       docDate: txDate,
       partyId: partyId || (memoryStore.parties.find((p) => p.businessId === businessId)?.id || ''),
-      placeOfSupply: '27',
+      placeOfSupply: '32',
       subtotal: Math.round(amount * 0.82),
       taxTotal: Math.round(amount * 0.18),
       roundOff: 0,

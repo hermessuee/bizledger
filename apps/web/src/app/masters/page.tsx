@@ -183,7 +183,7 @@ export default function MasterGovernancePage() {
           address: partyAddress.trim() || undefined,
           creditDays: Number(partyCreditDays) || 30,
           openingBalance: Math.round(Number(partyOpeningBalance) * 100),
-          stateCode: partyGstin && partyGstin.length >= 2 ? partyGstin.substring(0, 2) : business?.stateCode || '27',
+          stateCode: partyGstin && partyGstin.length >= 2 ? partyGstin.substring(0, 2) : business?.stateCode || '32',
         });
       }
       setIsPartyModalOpen(false);

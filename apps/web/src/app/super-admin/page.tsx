@@ -115,7 +115,7 @@ export default function SuperAdminPage() {
   const [registerModalOpen, setRegisterModalOpen] = useState(false);
   const [regBusinessName, setRegBusinessName] = useState('');
   const [regGstin, setRegGstin] = useState('');
-  const [regStateCode, setRegStateCode] = useState('27');
+  const [regStateCode, setRegStateCode] = useState('32');
   const [regAddress, setRegAddress] = useState('');
   const [regOwnerName, setRegOwnerName] = useState('');
   const [regEmail, setRegEmail] = useState('');
@@ -166,7 +166,7 @@ export default function SuperAdminPage() {
   const [editingFirm, setEditingFirm] = useState<DistributorWithStats | null>(null);
   const [editFirmName, setEditFirmName] = useState('');
   const [editFirmGstin, setEditFirmGstin] = useState('');
-  const [editFirmStateCode, setEditFirmStateCode] = useState('27');
+  const [editFirmStateCode, setEditFirmStateCode] = useState('32');
   const [editFirmAddress, setEditFirmAddress] = useState('');
   const [editFirmStatus, setEditFirmStatus] = useState<'active' | 'suspended' | 'trial'>('active');
   const [editFirmSubmitting, setEditFirmSubmitting] = useState(false);
@@ -484,7 +484,7 @@ export default function SuperAdminPage() {
     setEditingFirm(b);
     setEditFirmName(b.name);
     setEditFirmGstin(b.gstin || '');
-    setEditFirmStateCode(b.stateCode || '27');
+    setEditFirmStateCode(b.stateCode || '32');
     setEditFirmAddress(b.address || '');
     setEditFirmStatus((b.status as any) || 'active');
   };
@@ -1114,7 +1114,7 @@ export default function SuperAdminPage() {
                           </td>
                           <td className="py-3.5 px-4 whitespace-nowrap min-w-[160px]">
                             <p className="font-mono font-semibold text-slate-800">{b.gstin || 'Unregistered'}</p>
-                            <p className="text-[10px] text-slate-500">State: {b.stateCode || '27'}</p>
+                            <p className="text-[10px] text-slate-500">State: {b.stateCode || '32'}</p>
                           </td>
                           <td className="py-3.5 px-4 text-center whitespace-nowrap min-w-[120px]">
                             <select
@@ -2270,7 +2270,7 @@ export default function SuperAdminPage() {
                       maxLength={15}
                       value={editFirmGstin}
                       onChange={(e) => setEditFirmGstin(e.target.value.toUpperCase())}
-                      placeholder="e.g. 27AAPCA1234M1Z5"
+                      placeholder="e.g. 32AAPCA1234M1Z5"
                       className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-amber-400"
                     />
                   </div>

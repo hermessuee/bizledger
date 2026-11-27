@@ -100,6 +100,77 @@ documents.post('/', async (c) => {
   return c.json({ document: newDoc }, 201);
 });
 
+// POST /documents/batch - Save multiple purchase bills or invoices in a single multi-vendor entry
+documents.post('/batch', async (c) => {
+  const businessId = c.get('businessId');
+  const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
+  const body = await c.req.json();
+  const docsList = Array.isArray(body.documents) ? body.documents : [];
+  const finalizeAndLock = Boolean(body.finalizeAndLock);
+
+  if (docsList.length === 0) {
+    return c.json({ error: { code: 'VALIDATION_ERROR', message: 'No documents provided in batch' } }, 400);
+  }
+
+  const createdDocs = [];
+  const currentFy = `${new Date().getFullYear()}-${String(new Date().getFullYear() + 1).slice(-2)}`;
+
+  for (const item of docsList) {
+    const parsed = createDocumentSchema.safeParse(item);
+    if (!parsed.success) {
+      return c.json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid document in batch', details: parsed.error.format() } }, 400);
+    }
+    const data = parsed.data;
+    const docNo = data.docNo || memoryStore.getNextDocNo(data.docType, currentFy);
+    const targetBusinessId = (isSuperAdmin && (item.businessId || body.businessId))
+      ? (item.businessId || body.businessId)
+      : (businessId !== 'all' ? businessId : (memoryStore.businesses[0]?.id || '11111111-1111-1111-1111-111111111111'));
+
+    const newDoc = {
+      id: crypto.randomUUID(),
+      businessId: targetBusinessId,
+      docType: data.docType,
+      docNo,
+      docDate: data.docDate,
+      dueDate: data.dueDate,
+      partyId: data.partyId,
+      placeOfSupply: data.placeOfSupply || '32',
+      subtotal: data.subtotal,
+      taxTotal: data.taxTotal,
+      roundOff: data.roundOff,
+      total: data.total,
+      paidAmount: 0,
+      status: 'draft' as const,
+      lines: data.lines.map((l) => ({
+        id: crypto.randomUUID(),
+        ...l,
+        unit: l.unit || 'PCS',
+      })),
+    };
+
+    memoryStore.documents.push(newDoc);
+    createdDocs.push(newDoc);
+
+    recordAuditLog({
+      businessId: targetBusinessId,
+      userId: user.id,
+      action: 'CREATE_DOCUMENT',
+      entity: 'documents',
+      entityId: newDoc.id,
+      details: { docType: newDoc.docType, docNo: newDoc.docNo, total: newDoc.total },
+    });
+  }
+
+  if (finalizeAndLock) {
+    for (const doc of createdDocs) {
+      memoryStore.postDocument(doc.id, user.id);
+    }
+  }
+
+  return c.json({ success: true, count: createdDocs.length, documents: createdDocs }, 201);
+});
+
 // PUT /documents/:id - Edit document (Super Admin has unrestricted power override across all distributors)
 documents.put('/:id', async (c) => {
   const businessId = c.get('businessId');

@@ -283,7 +283,7 @@ export default function CustomersPage() {
                   <input
                     type="text"
                     maxLength={15}
-                    placeholder="e.g. 27AAPCA1234M1Z5"
+                    placeholder="e.g. 32AAPCA1234M1Z5"
                     value={gstin}
                     onChange={(e) => setGstin(e.target.value.toUpperCase())}
                     className="w-full px-3 py-2 border rounded-lg font-mono outline-none uppercase"

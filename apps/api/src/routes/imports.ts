@@ -280,8 +280,8 @@ imports.post('/invoices', async (c) => {
       memoryStore.parties.push(party);
     }
 
-    const pos = r.placeOfSupply?.trim() || business?.stateCode || '27';
-    const isInterState = pos !== (business?.stateCode || '27');
+    const pos = r.placeOfSupply?.trim() || business?.stateCode || '32';
+    const isInterState = pos !== (business?.stateCode || '32');
     const qty = Number(r.qty) || 1;
     const ratePaise = Math.round(Number(r.rate || 0) * 100);
     const taxablePaise = BigInt(qty * ratePaise);
@@ -419,8 +419,8 @@ imports.post('/bills', async (c) => {
       memoryStore.parties.push(party);
     }
 
-    const pos = r.placeOfSupply?.trim() || business?.stateCode || '27';
-    const isInterState = pos !== (business?.stateCode || '27');
+    const pos = r.placeOfSupply?.trim() || business?.stateCode || '32';
+    const isInterState = pos !== (business?.stateCode || '32');
     const qty = Number(r.qty) || 1;
     const ratePaise = Math.round(Number(r.rate || 0) * 100);
     const taxablePaise = BigInt(qty * ratePaise);
