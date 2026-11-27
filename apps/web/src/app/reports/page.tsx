@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
 import { formatPaise } from '@bizledger/shared';
 import { downloadDetailedTradingPdf } from '@/lib/pdf';
+import * as XLSX from 'xlsx';
 import {
   BarChart3,
   Scale,
@@ -157,113 +158,126 @@ export default function ReportsPage() {
     };
   }, [filteredEntries]);
 
-  // Export Detailed Report to Excel (CSV with UTF-8 BOM for Microsoft Excel)
+  // Export Detailed Report to Excel (.xlsx) with proper formatting and column widths
   const handleExportDetailedExcel = () => {
     if (!detailedData) return;
     const dist = detailedData.distributor || business;
     const summary = computedSummary;
     const list = filteredEntries;
 
-    const rows: (string | number)[][] = [
-      [`"${dist?.name || 'Distributor Firm'}"`],
+    // Structured Array of Arrays (AOA) for XLSX
+    const dataRows: (string | number)[][] = [
+      // Top Heading: Distributor Name in Bold
+      [dist?.name ? String(dist.name).toUpperCase() : 'DISTRIBUTOR FIRM'],
       [
-        `"GSTIN: ${dist?.gstin || 'Unregistered'}"`,
-        `"State: ${dist?.stateCode || '32'}"`,
-        `"Address: ${(dist?.address || 'Kerala').replace(/"/g, '""')}"`,
+        `GSTIN: ${dist?.gstin || 'Unregistered'}`,
+        `State: ${dist?.stateCode || '32'} - Kerala`,
+        `Address: ${dist?.address || 'Kerala'}`,
       ],
-      ['"DETAILED TRADING & PROFIT & LOSS REGISTER (ITEM-WISE DAYBOOK)"'],
+      ['DETAILED TRADING & PROFIT & LOSS REGISTER (ITEM-WISE DAYBOOK)'],
       [
-        `"From Date:"`,
-        `"${detailedFilters.fromDate || 'All'}"`,
-        `"To Date:"`,
-        `"${detailedFilters.toDate || 'All'}"`,
-        `"Report Generated:"`,
-        `"${new Date().toLocaleString('en-IN')}"`,
+        `Period From: ${detailedFilters.fromDate || 'Beginning'}`,
+        `Period To: ${detailedFilters.toDate || 'Present'}`,
+        `Generated: ${new Date().toLocaleString('en-IN')}`,
+        `Total Lines: ${list.length}`,
       ],
       [
-        `"Total Purchases [Debit Outflow]:"`,
-        (summary.totalPurchasesDebit / 100).toFixed(2),
-        `"Total Sales [Credit Inflow]:"`,
-        (summary.totalSalesCredit / 100).toFixed(2),
-        `"Net Trading Profit / Margin:"`,
-        (summary.netProfit / 100).toFixed(2),
-        `"Total Item Qty:"`,
-        summary.totalQty,
-        `"Total Entries:"`,
-        list.length,
+        `Total Purchases (Debit): Rs. ${(summary.totalPurchasesDebit / 100).toFixed(2)}`,
+        `Total Sales (Credit): Rs. ${(summary.totalSalesCredit / 100).toFixed(2)}`,
+        `Net Trading Margin: Rs. ${(summary.netProfit / 100).toFixed(2)}`,
+        `Total Qty: ${summary.totalQty}`,
+        `Total Tax: Rs. ${(summary.totalTax / 100).toFixed(2)}`,
       ],
-      [],
+      [], // Blank separator row
+      // Column Headers (Exact 16 distinct columns)
       [
-        '#',
+        'Sl No',
         'Date',
         'Voucher / Doc #',
-        'Type',
+        'Entry Type',
         'Party Name (Customer / Vendor)',
         'Party GSTIN',
         'Item Description',
         'HSN/SAC',
-        'Qty',
+        'Quantity',
         'Unit',
         'Rate (INR)',
         'GST %',
         'Tax Amount (INR)',
         'Debit [Purchases] (INR)',
-        'Credit [Sales / Billed] (INR)',
+        'Credit [Sales] (INR)',
         'Net Balance (INR)',
       ],
+      // Data Rows with proper types
       ...list.map((e: any, idx: number) => [
         idx + 1,
-        `"${e.docDate}"`,
-        `"${e.docNo}"`,
-        `"${e.typeLabel}"`,
-        `"${(e.partyName || '').replace(/"/g, '""')}"`,
-        `"${e.partyGstin || '-'}"`,
-        `"${(e.description || '').replace(/"/g, '""')}"`,
-        `"${e.hsnSac || '-'}"`,
-        e.qty,
-        `"${e.unit}"`,
-        (e.rate / 100).toFixed(2),
-        `${e.gstRate}%`,
-        (e.taxAmount / 100).toFixed(2),
-        e.debit > 0 ? (e.debit / 100).toFixed(2) : '0.00',
-        e.credit > 0 ? (e.credit / 100).toFixed(2) : '0.00',
-        (e.runningBalance / 100).toFixed(2),
+        e.docDate,
+        e.docNo,
+        e.typeLabel,
+        e.partyName || '-',
+        e.partyGstin || '-',
+        e.description || '-',
+        e.hsnSac || '-',
+        e.qty || 0,
+        e.unit || 'KG',
+        e.rate ? e.rate / 100 : 0,
+        e.gstRate ? `${e.gstRate}%` : '0%',
+        e.taxAmount ? e.taxAmount / 100 : 0,
+        e.debit ? e.debit / 100 : 0,
+        e.credit ? e.credit / 100 : 0,
+        e.runningBalance ? e.runningBalance / 100 : 0,
       ]),
-      [],
+      [], // Blank separator row
+      // Grand Totals Row
       [
-        'TOTALS',
+        'GRAND TOTALS',
         '',
         '',
         '',
         '',
         '',
-        `"${list.length} item lines"`,
+        `${list.length} item lines`,
         '',
         summary.totalQty,
         '',
         '',
         '',
-        (summary.totalTax / 100).toFixed(2),
-        (summary.totalPurchasesDebit / 100).toFixed(2),
-        (summary.totalSalesCredit / 100).toFixed(2),
-        (summary.netProfit / 100).toFixed(2),
+        summary.totalTax / 100,
+        summary.totalPurchasesDebit / 100,
+        summary.totalSalesCredit / 100,
+        summary.netProfit / 100,
       ],
     ];
 
-    const csvContent = '\uFEFF' + rows.map((r) => r.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const ws = XLSX.utils.aoa_to_sheet(dataRows);
+
+    // Set generous column widths so no cell text is clipped or squished in Excel
+    ws['!cols'] = [
+      { wch: 8 },  // Sl No
+      { wch: 14 }, // Date
+      { wch: 24 }, // Voucher / Doc # (fits BILL/2026-27/0002 comfortably!)
+      { wch: 16 }, // Entry Type
+      { wch: 28 }, // Party Name
+      { wch: 20 }, // Party GSTIN
+      { wch: 32 }, // Item Description
+      { wch: 12 }, // HSN/SAC
+      { wch: 14 }, // Quantity
+      { wch: 10 }, // Unit
+      { wch: 16 }, // Rate (INR)
+      { wch: 10 }, // GST %
+      { wch: 16 }, // Tax Amount (INR)
+      { wch: 22 }, // Debit [Purchases] (INR)
+      { wch: 22 }, // Credit [Sales] (INR)
+      { wch: 22 }, // Net Balance (INR)
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Trading Register');
+
     const safeDist = (dist?.name || 'Distributor').replace(/[^a-zA-Z0-9]/g, '_');
-    link.setAttribute('href', url);
-    link.setAttribute(
-      'download',
-      `Detailed_Trading_Report_${safeDist}_${detailedFilters.fromDate || 'start'}_to_${detailedFilters.toDate || 'end'}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const safeFrom = (detailedFilters.fromDate || 'start').replace(/-/g, '');
+    const safeTo = (detailedFilters.toDate || 'end').replace(/-/g, '');
+    XLSX.writeFile(wb, `Detailed_Trading_Report_${safeDist}_${safeFrom}_to_${safeTo}.xlsx`, { bookType: 'xlsx' });
   };
 
   // Export Detailed Report to PDF (Formatted Letterhead with Distributor name on top & date range)
@@ -409,7 +423,7 @@ export default function ReportsPage() {
                   title="Export complete item-by-item entries to Excel/CSV with distributor header and date range"
                 >
                   <FileSpreadsheet className="w-4 h-4 mr-1.5" />
-                  <span>Export to Excel</span>
+                  <span>Export to Excel (.xlsx)</span>
                 </button>
 
                 <button

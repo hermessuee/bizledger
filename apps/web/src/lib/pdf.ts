@@ -274,83 +274,129 @@ export function downloadDetailedTradingPdf(data: DetailedTradingPdfData) {
   const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
   const { distributor, filters, summary, entries } = data;
 
-  // Header banner
+  // 1. Executive Top Header Banner (slate-900)
   doc.setFillColor(15, 23, 42); // slate-900
-  doc.rect(0, 0, 842, 65, 'F');
+  doc.rect(0, 0, 842, 68, 'F');
 
-  // Distributor Name at top
+  // Distributor Name at top (Bold White, 16pt)
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.text((distributor.name || 'DISTRIBUTOR FIRM').toUpperCase(), 30, 28);
+  const distName = (distributor.name || 'DISTRIBUTOR FIRM').toUpperCase();
+  doc.text(distName, 25, 28);
 
+  // Distributor Tax & Address Info (White / Light-Slate, 8.5pt)
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
-  const distInfo = `GSTIN: ${distributor.gstin || 'Unregistered'} | State: ${distributor.stateCode || '32'} | Address: ${distributor.address || 'Kerala'}`;
-  doc.text(distInfo.substring(0, 110), 30, 44);
+  doc.setTextColor(226, 232, 240); // slate-200
+  const distInfo = `GSTIN: ${distributor.gstin || 'Unregistered'} | State: ${distributor.stateCode || '32'} - Kerala | Address: ${distributor.address || 'Kerala'}`;
+  doc.text(distInfo.substring(0, 105), 25, 45);
 
-  // Title on right
+  // Report Title on Right
+  doc.setTextColor(255, 255, 255);
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
-  doc.text('DETAILED TRADING & P&L REGISTER', 520, 28);
+  doc.text('DETAILED TRADING & P&L REGISTER', 530, 28);
+
+  // Period on Right
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
-  const dateRangeStr = `Period: ${filters.fromDate || 'All Time'} to ${filters.toDate || 'Present'} | Entries: ${entries.length}`;
-  doc.text(dateRangeStr, 520, 44);
+  doc.setTextColor(226, 232, 240);
+  const dateRangeStr = `Period: ${filters.fromDate || 'All Time'} to ${filters.toDate || 'Present'} | Lines: ${entries.length}`;
+  doc.text(dateRangeStr, 530, 45);
 
-  // Summary KPI Cards row
-  const startY = 75;
-  doc.setDrawColor(226, 232, 240);
-  doc.setFillColor(248, 250, 252);
+  // 2. High-Contrast KPI Cards (Crisp White Backgrounds, Light Borders, Bold Readable Text)
+  const startY = 76;
+  const cardHeight = 44;
+  const cardY = startY;
 
-  // Purchases (Debit) box
-  doc.roundedRect(30, startY, 180, 40, 4, 4, 'FD');
-  doc.setTextColor(100, 116, 139);
+  // Box 1: Purchases (Debit) - Crisp White Card with Amber Accent
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(203, 213, 225); // slate-300
+  doc.setLineWidth(1);
+  doc.roundedRect(25, cardY, 190, cardHeight, 3, 3, 'FD');
+  // Amber top accent bar
+  doc.setFillColor(217, 119, 6); // amber-600
+  doc.rect(25, cardY, 190, 3, 'F');
+  // Label
+  doc.setTextColor(71, 85, 105); // slate-600
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
-  doc.text('TOTAL PURCHASES (DEBIT)', 40, startY + 14);
+  doc.text('TOTAL PURCHASES (DEBIT)', 35, cardY + 16);
+  // Value
   doc.setTextColor(180, 83, 9); // amber-700
-  doc.setFontSize(11);
-  doc.text(`Rs. ${formatPaise(summary.totalPurchasesDebit)}`, 40, startY + 30);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Rs. ${formatPaise(summary.totalPurchasesDebit)}`, 35, cardY + 34);
 
-  // Sales (Credit) box
-  doc.roundedRect(220, startY, 180, 40, 4, 4, 'FD');
-  doc.setTextColor(100, 116, 139);
+  // Box 2: Sales (Credit) - Crisp White Card with Emerald Accent
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(1);
+  doc.roundedRect(225, cardY, 190, cardHeight, 3, 3, 'FD');
+  // Emerald top accent bar
+  doc.setFillColor(16, 185, 129); // emerald-500
+  doc.rect(225, cardY, 190, 3, 'F');
+  // Label
+  doc.setTextColor(71, 85, 105);
   doc.setFontSize(7.5);
-  doc.text('TOTAL SALES (CREDIT)', 230, startY + 14);
-  doc.setTextColor(4, 120, 87); // emerald-700
-  doc.setFontSize(11);
-  doc.text(`Rs. ${formatPaise(summary.totalSalesCredit)}`, 230, startY + 30);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TOTAL SALES BILLED (CREDIT)', 235, cardY + 16);
+  // Value
+  doc.setTextColor(5, 150, 105); // emerald-600
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Rs. ${formatPaise(summary.totalSalesCredit)}`, 235, cardY + 34);
 
-  // Net Profit / Margin box
+  // Box 3: Net Trading Profit - Crisp White Card with Blue Accent
   const isProfit = summary.netProfit >= 0;
-  doc.roundedRect(410, startY, 190, 40, 4, 4, 'FD');
-  doc.setTextColor(100, 116, 139);
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(1);
+  doc.roundedRect(425, cardY, 195, cardHeight, 3, 3, 'FD');
+  // Blue top accent bar
+  doc.setFillColor(isProfit ? 37 : 220, isProfit ? 99 : 38, isProfit ? 235 : 38);
+  doc.rect(425, cardY, 195, 3, 'F');
+  // Label
+  doc.setTextColor(71, 85, 105);
   doc.setFontSize(7.5);
-  doc.text(isProfit ? 'NET TRADING PROFIT (CREDIT - DEBIT)' : 'NET TRADING LOSS (DEFICIT)', 420, startY + 14);
+  doc.setFont('helvetica', 'bold');
+  doc.text(isProfit ? 'NET TRADING MARGIN (CREDIT - DEBIT)' : 'NET TRADING DEFICIT (LOSS)', 435, cardY + 16);
+  // Value
   doc.setTextColor(isProfit ? 29 : 185, isProfit ? 78 : 28, isProfit ? 216 : 28);
-  doc.setFontSize(11);
-  doc.text(`Rs. ${formatPaise(Math.abs(summary.netProfit))}${!isProfit ? ' (Loss)' : ''}`, 420, startY + 30);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Rs. ${formatPaise(Math.abs(summary.netProfit))}${!isProfit ? ' (Loss)' : ''}`, 435, cardY + 34);
 
-  // Total Tax & Qty box
-  doc.roundedRect(610, startY, 202, 40, 4, 4, 'FD');
-  doc.setTextColor(100, 116, 139);
+  // Box 4: Volume & Tax - Crisp White Card with Slate Accent
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(1);
+  doc.roundedRect(630, cardY, 187, cardHeight, 3, 3, 'FD');
+  // Slate top accent bar
+  doc.setFillColor(71, 85, 105);
+  doc.rect(630, cardY, 187, 3, 'F');
+  // Label
+  doc.setTextColor(71, 85, 105);
   doc.setFontSize(7.5);
-  doc.text('TAX & TOTAL QUANTITY', 620, startY + 14);
-  doc.setTextColor(30, 41, 59);
-  doc.setFontSize(10);
-  doc.text(`Tax: Rs. ${formatPaise(summary.totalTax)} | Qty: ${summary.totalQty}`, 620, startY + 30);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TOTAL ITEM QTY & TAX (GST)', 640, cardY + 16);
+  // Value
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(10.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Qty: ${summary.totalQty.toLocaleString('en-IN')} | Tax: Rs. ${formatPaise(summary.totalTax)}`, 640, cardY + 34);
 
-  // Table rows
+  // 3. Grid Table with Crisp Visible Borders and Balanced Column Widths
   const tableRows = entries.map((e, idx) => [
     idx + 1,
     e.docDate,
     e.docNo,
     e.category,
-    e.partyName.length > 22 ? e.partyName.substring(0, 20) + '..' : e.partyName,
-    e.description.length > 26 ? e.description.substring(0, 24) + '..' : e.description,
+    e.partyName || '-',
+    e.description || '-',
     e.hsnSac || '-',
-    `${e.qty} ${e.unit}`,
+    `${e.qty} ${e.unit || 'KG'}`,
     formatPaise(e.rate),
     formatPaise(e.taxAmount),
     e.debit > 0 ? formatPaise(e.debit) : '-',
@@ -359,16 +405,16 @@ export function downloadDetailedTradingPdf(data: DetailedTradingPdfData) {
   ]);
 
   autoTable(doc, {
-    startY: startY + 50,
+    startY: cardY + cardHeight + 10,
     head: [[
       '#',
       'Date',
-      'Voucher #',
+      'Voucher / Doc #',
       'Type',
       'Party (Customer / Vendor)',
       'Item Description',
       'HSN',
-      'Qty',
+      'Qty & Unit',
       'Rate (Rs)',
       'Tax (Rs)',
       'Debit [Purchases] (Rs)',
@@ -376,67 +422,115 @@ export function downloadDetailedTradingPdf(data: DetailedTradingPdfData) {
       'Net Balance (Rs)',
     ]],
     body: tableRows,
-    theme: 'striped',
+    theme: 'grid', // High-contrast clean grid lines on every cell
+    styles: {
+      fontSize: 7.5,
+      cellPadding: 4,
+      textColor: [15, 23, 42],
+      lineColor: [203, 213, 225], // Crisp visible slate-300 borders
+      lineWidth: 0.5,
+      valign: 'middle',
+      overflow: 'linebreak',
+    },
     headStyles: {
-      fillColor: [30, 41, 59],
-      textColor: 255,
+      fillColor: [30, 41, 59], // Executive Slate-800
+      textColor: [255, 255, 255],
       fontSize: 8,
       fontStyle: 'bold',
       halign: 'center',
+      lineColor: [51, 65, 85],
+      lineWidth: 0.5,
     },
-    bodyStyles: {
-      fontSize: 7.5,
-      cellPadding: 3.5,
-      textColor: [15, 23, 42],
+    alternateRowStyles: {
+      fillColor: [248, 250, 252], // slate-50 subtle zebra striping
     },
     columnStyles: {
-      0: { cellWidth: 22, halign: 'center' },
-      1: { cellWidth: 50, halign: 'center' },
-      2: { cellWidth: 58, fontStyle: 'bold' },
-      3: { cellWidth: 44, halign: 'center' },
-      4: { cellWidth: 105 },
-      5: { cellWidth: 110, fontStyle: 'bold' },
-      6: { cellWidth: 40, halign: 'center' },
-      7: { cellWidth: 48, halign: 'center' },
-      8: { cellWidth: 48, halign: 'right' },
-      9: { cellWidth: 48, halign: 'right' },
-      10: { cellWidth: 70, halign: 'right', fontStyle: 'bold', textColor: [180, 83, 9] },
-      11: { cellWidth: 70, halign: 'right', fontStyle: 'bold', textColor: [4, 120, 87] },
-      12: { cellWidth: 70, halign: 'right', fontStyle: 'bold' },
+      0: { cellWidth: 24, halign: 'center' }, // #
+      1: { cellWidth: 54, halign: 'center' }, // Date (e.g. 27-11-2026)
+      2: { cellWidth: 84, halign: 'left', fontStyle: 'bold' }, // Voucher # (fits BILL/2026-27/0002 without wrapping!)
+      3: { cellWidth: 46, halign: 'center' }, // Type (Purchase / Sale)
+      4: { cellWidth: 110, halign: 'left' }, // Party Name
+      5: { cellWidth: 120, halign: 'left', fontStyle: 'bold' }, // Item Description
+      6: { cellWidth: 38, halign: 'center' }, // HSN
+      7: { cellWidth: 58, halign: 'center', fontStyle: 'bold' }, // Qty & Unit
+      8: { cellWidth: 50, halign: 'right' }, // Rate
+      9: { cellWidth: 42, halign: 'right' }, // Tax
+      10: { cellWidth: 58, halign: 'right', fontStyle: 'bold', textColor: [180, 83, 9] }, // Debit (Purchases)
+      11: { cellWidth: 58, halign: 'right', fontStyle: 'bold', textColor: [4, 120, 87] }, // Credit (Sales)
+      12: { cellWidth: 60, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] }, // Net Balance
     },
-    foot: [[
-      'TOTALS',
-      '',
-      '',
-      '',
-      '',
-      `${entries.length} items`,
-      '',
-      `${summary.totalQty}`,
-      '',
-      formatPaise(summary.totalTax),
-      formatPaise(summary.totalPurchasesDebit),
-      formatPaise(summary.totalSalesCredit),
-      formatPaise(summary.netProfit),
-    ]],
+    foot: [
+      [
+        {
+          content: `GRAND TOTALS (${entries.length} ITEMS)`,
+          colSpan: 6,
+          styles: {
+            halign: 'right',
+            fontStyle: 'bold',
+            fontSize: 8,
+            textColor: [15, 23, 42],
+            fillColor: [241, 245, 249],
+          },
+        },
+        { content: '-', styles: { halign: 'center', fillColor: [241, 245, 249] } },
+        {
+          content: `${summary.totalQty.toLocaleString('en-IN')}`,
+          styles: {
+            halign: 'center',
+            fontStyle: 'bold',
+            textColor: [29, 78, 216],
+            fillColor: [241, 245, 249],
+          },
+        },
+        { content: '-', styles: { halign: 'center', fillColor: [241, 245, 249] } },
+        {
+          content: formatPaise(summary.totalTax),
+          styles: { halign: 'right', fontStyle: 'bold', fillColor: [241, 245, 249] },
+        },
+        {
+          content: formatPaise(summary.totalPurchasesDebit),
+          styles: {
+            halign: 'right',
+            fontStyle: 'bold',
+            textColor: [180, 83, 9],
+            fillColor: [254, 243, 199], // Light amber highlight
+          },
+        },
+        {
+          content: formatPaise(summary.totalSalesCredit),
+          styles: {
+            halign: 'right',
+            fontStyle: 'bold',
+            textColor: [4, 120, 87],
+            fillColor: [209, 250, 229], // Light emerald highlight
+          },
+        },
+        {
+          content: formatPaise(summary.netProfit),
+          styles: {
+            halign: 'right',
+            fontStyle: 'bold',
+            textColor: [15, 23, 42],
+            fillColor: [238, 242, 255], // Light blue highlight
+          },
+        },
+      ],
+    ],
     footStyles: {
-      fillColor: [241, 245, 249],
-      textColor: [15, 23, 42],
-      fontSize: 8,
-      fontStyle: 'bold',
-      halign: 'right',
+      lineColor: [203, 213, 225],
+      lineWidth: 0.5,
     },
     didDrawPage: (data) => {
       const pageCount = (doc as any).internal.getNumberOfPages();
       doc.setFontSize(7.5);
-      doc.setTextColor(148, 163, 184);
+      doc.setTextColor(100, 116, 139);
       doc.text(
         `Distributor: ${distributor.name} | Period: ${filters.fromDate || 'All'} to ${filters.toDate || 'All'} | Page ${data.pageNumber} of ${pageCount}`,
-        30,
+        25,
         580
       );
     },
-    margin: { left: 25, right: 25, bottom: 25 },
+    margin: { left: 20, right: 20, bottom: 25 },
   });
 
   const safeDistName = (distributor.name || 'Distributor').replace(/[^a-zA-Z0-9]/g, '_');
