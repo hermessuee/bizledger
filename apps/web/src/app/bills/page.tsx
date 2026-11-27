@@ -29,15 +29,13 @@ import {
   Save,
   AlertTriangle,
   Layers,
-  ArrowRight,
+  MapPin,
 } from 'lucide-react';
 
 interface PurchaseBillLine {
   vendorId: string;
   supplierBillNo: string;
   docDate: string;
-  dueDate: string;
-  placeOfSupply: string;
   itemId?: string;
   description: string;
   hsnSac: string;
@@ -63,22 +61,24 @@ export default function BillsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // User feature toggles for Kerala produce / multi-vendor daybook
+  // Top header fields (moved upward from table as requested, default Kerala 32)
+  const defaultKeralaState = business?.stateCode || '32';
+  const todayDate = new Date().toISOString().split('T')[0];
+
+  const [placeOfSupply, setPlaceOfSupply] = useState<string>(defaultKeralaState);
+  const [dueDate, setDueDate] = useState<string>('');
+
+  // Feature toggles for Kerala produce / multi-vendor daybook
   const [isFixedRate, setIsFixedRate] = useState(false);
   const [autoFillVendor, setAutoFillVendor] = useState(true);
   const [autoFillDate, setAutoFillDate] = useState(true);
 
-  // Line items state
-  const defaultKeralaState = business?.stateCode || '32';
-  const todayDate = new Date().toISOString().split('T')[0];
-
+  // Daybook Line items
   const [lines, setLines] = useState<PurchaseBillLine[]>([
     {
       vendorId: '',
       supplierBillNo: '',
       docDate: todayDate,
-      dueDate: '',
-      placeOfSupply: defaultKeralaState,
       description: '',
       hsnSac: '',
       unit: 'KG',
@@ -132,7 +132,7 @@ export default function BillsPage() {
   const handleToggleFixedRate = (checked: boolean) => {
     setIsFixedRate(checked);
     if (checked) {
-      // Set GST % default to 0 for raw produce / fixed rate lots
+      // In fixed rate lot mode, GST defaults to 0% for raw produce
       const updated = lines.map((l) => ({
         ...l,
         gstRate: 0,
@@ -147,11 +147,10 @@ export default function BillsPage() {
     setAutoFillVendor(checked);
     if (checked && lines.length > 1 && lines[0]?.vendorId) {
       const row0Vendor = lines[0].vendorId;
-      const row0Pos = lines[0].placeOfSupply || defaultKeralaState;
       const updated = lines.map((l, i) => {
         if (i === 0) return l;
         if (!l.vendorId) {
-          return { ...l, vendorId: row0Vendor, placeOfSupply: row0Pos };
+          return { ...l, vendorId: row0Vendor };
         }
         return l;
       });
@@ -177,28 +176,20 @@ export default function BillsPage() {
 
   // Vendor selection per row
   const handleRowVendorSelect = (idx: number, vId: string) => {
-    const selectedVendor = vendors.find((v) => v.id === vId);
-    const vendorPos =
-      selectedVendor?.gstin && selectedVendor.gstin.length >= 2
-        ? selectedVendor.gstin.substring(0, 2)
-        : selectedVendor?.stateCode || defaultKeralaState;
-
     const oldRow0Vendor = lines[0]?.vendorId;
     const updated = [...lines];
     updated[idx] = {
       ...updated[idx],
       vendorId: vId,
-      placeOfSupply: vendorPos,
     };
 
-    // If changing row 0 and auto-fill is active, cascade to any row matching old row 0 or empty
+    // If changing row 0 and auto-fill is active, cascade to rows matching old row 0 or empty
     if (idx === 0 && autoFillVendor) {
       for (let i = 1; i < updated.length; i++) {
         if (!updated[i].vendorId || updated[i].vendorId === oldRow0Vendor) {
           updated[i] = {
             ...updated[i],
             vendorId: vId,
-            placeOfSupply: vendorPos,
           };
         }
       }
@@ -252,8 +243,6 @@ export default function BillsPage() {
     const row0 = lines[0];
     const newVendorId = autoFillVendor && row0?.vendorId ? row0.vendorId : '';
     const newDate = autoFillDate && row0?.docDate ? row0.docDate : todayDate;
-    const newDueDate = autoFillDate && row0?.dueDate ? row0.dueDate : '';
-    const newPos = autoFillVendor && row0?.placeOfSupply ? row0.placeOfSupply : defaultKeralaState;
 
     setLines([
       ...lines,
@@ -261,8 +250,6 @@ export default function BillsPage() {
         vendorId: newVendorId,
         supplierBillNo: '',
         docDate: newDate,
-        dueDate: newDueDate,
-        placeOfSupply: newPos,
         itemId: '',
         description: '',
         hsnSac: '',
@@ -280,18 +267,18 @@ export default function BillsPage() {
     }
   };
 
-  // Compute live tax and totals across all lines
+  // Compute live tax and totals based on top Place of Supply
   const bizState = business?.stateCode || '32';
+  const isInterState = (placeOfSupply || defaultKeralaState) !== bizState;
+
   let computedSubtotal = 0n;
   let computedTaxTotal = 0n;
 
   const computedLines = lines.map((line) => {
-    const linePos = line.placeOfSupply || bizState;
-    const isInterState = linePos !== bizState;
     const qty = Number(line.qty) || 0;
     const ratePaise = BigInt(Math.round((Number(line.rateRupees) || 0) * 100));
 
-    // When isFixedRate is true: Rate is line total directly (e.g. Mankda 250 KG @ 1200 => Taxable: ₹1200)
+    // When isFixedRate is true: Rate entered is line total directly (e.g. Mankda 250 KG @ 1200 => Taxable: ₹1200)
     const taxablePaise = isFixedRate ? ratePaise : BigInt(Math.round(qty * Number(ratePaise)));
 
     const taxRes = calculateLineTax({
@@ -315,7 +302,6 @@ export default function BillsPage() {
       sgst: Number(taxRes.sgst),
       igst: Number(taxRes.igst),
       lineTotal: Number(taxRes.lineTotal),
-      isInterState,
     };
   });
 
@@ -328,19 +314,16 @@ export default function BillsPage() {
     setAutoFillVendor(true);
     setAutoFillDate(true);
     setErrorMsg(null);
+    setPlaceOfSupply(business?.stateCode || '32');
+    setDueDate('');
+
     const firstVendorId = vendors[0]?.id || '';
-    const firstVendorPos =
-      vendors[0]?.gstin && vendors[0].gstin.length >= 2
-        ? vendors[0].gstin.substring(0, 2)
-        : defaultKeralaState;
 
     setLines([
       {
         vendorId: firstVendorId,
         supplierBillNo: '',
         docDate: todayDate,
-        dueDate: '',
-        placeOfSupply: firstVendorPos,
         itemId: '',
         description: '',
         hsnSac: '',
@@ -361,12 +344,12 @@ export default function BillsPage() {
     }
     setEditingDocId(doc.id);
     setTargetBusinessId(doc.businessId || '');
+    setPlaceOfSupply(doc.placeOfSupply || business?.stateCode || '32');
+    setDueDate(doc.dueDate || '');
 
     const docDateVal = doc.docDate || todayDate;
-    const dueDateVal = doc.dueDate || '';
     const vendorVal = doc.partyId || '';
     const billNoVal = doc.docNo || '';
-    const posVal = doc.placeOfSupply || defaultKeralaState;
 
     if (doc.lines && doc.lines.length > 0) {
       setLines(
@@ -374,8 +357,6 @@ export default function BillsPage() {
           vendorId: vendorVal,
           supplierBillNo: billNoVal,
           docDate: docDateVal,
-          dueDate: dueDateVal,
-          placeOfSupply: posVal,
           itemId: l.itemId || '',
           description: l.description,
           hsnSac: l.hsnSac || '',
@@ -391,8 +372,6 @@ export default function BillsPage() {
           vendorId: vendorVal,
           supplierBillNo: billNoVal,
           docDate: docDateVal,
-          dueDate: dueDateVal,
-          placeOfSupply: posVal,
           itemId: '',
           description: '',
           hsnSac: '',
@@ -435,14 +414,12 @@ export default function BillsPage() {
       setSubmitting(true);
       setErrorMsg(null);
 
-      const bizState = business?.stateCode || '32';
+      const targetPos = placeOfSupply || defaultKeralaState;
 
       if (editingDocId) {
-        // Update single document
+        // Update single existing document
         const line0 = lines[0];
         const payloadLines = lines.map((l) => {
-          const linePos = l.placeOfSupply || bizState;
-          const isInterState = linePos !== bizState;
           const qty = Number(l.qty) || 0;
           const ratePaise = BigInt(Math.round((Number(l.rateRupees) || 0) * 100));
           const taxablePaise = isFixedRate ? ratePaise : BigInt(Math.round(qty * Number(ratePaise)));
@@ -473,9 +450,9 @@ export default function BillsPage() {
           docType: 'purchase_bill',
           docNo: line0.supplierBillNo?.trim() || undefined,
           docDate: line0.docDate || todayDate,
-          dueDate: line0.dueDate || undefined,
+          dueDate: dueDate || undefined,
           partyId: line0.vendorId,
-          placeOfSupply: line0.placeOfSupply || bizState,
+          placeOfSupply: targetPos,
           subtotal: Number(computedSubtotal),
           taxTotal: Number(computedTaxTotal),
           roundOff: Number(roundOff),
@@ -488,7 +465,7 @@ export default function BillsPage() {
           await api.post(`/api/v1/documents/${editingDocId}/post`);
         }
       } else {
-        // Group rows by vendorId so multi-vendor purchases cleanly create respective bills
+        // Multi-vendor Daybook: group rows by vendorId
         const vendorGroups: Record<string, typeof lines> = {};
         lines.forEach((l) => {
           if (!vendorGroups[l.vendorId]) vendorGroups[l.vendorId] = [];
@@ -500,8 +477,6 @@ export default function BillsPage() {
           let grpTaxTotal = 0n;
 
           const compGroupLines = groupLines.map((l) => {
-            const linePos = l.placeOfSupply || bizState;
-            const isInterState = linePos !== bizState;
             const qty = Number(l.qty) || 0;
             const ratePaise = BigInt(Math.round((Number(l.rateRupees) || 0) * 100));
             const taxablePaise = isFixedRate ? ratePaise : BigInt(Math.round(qty * Number(ratePaise)));
@@ -539,9 +514,9 @@ export default function BillsPage() {
             docType: 'purchase_bill',
             docNo: firstLine.supplierBillNo?.trim() || undefined,
             docDate: firstLine.docDate || todayDate,
-            dueDate: firstLine.dueDate || undefined,
+            dueDate: dueDate || undefined,
             partyId: vId,
-            placeOfSupply: firstLine.placeOfSupply || bizState,
+            placeOfSupply: targetPos,
             subtotal: Number(grpSubtotal),
             taxTotal: Number(grpTaxTotal),
             roundOff: Number(grpRoundOff),
@@ -911,39 +886,84 @@ export default function BillsPage() {
                 </div>
               )}
 
-              {/* Target Distributor Firm Selector for Super-Admin */}
-              {user?.role === 'super_admin' && !editingDocId && (
-                <div className="bg-indigo-50/70 dark:bg-indigo-950/40 p-3 rounded-xl border border-indigo-200 dark:border-indigo-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
-                    <label className="font-bold text-xs text-indigo-950 dark:text-indigo-200">
-                      Target Distributor Firm (Super-Admin Master Scope) *
-                    </label>
-                  </div>
-                  <select
-                    value={targetBusinessId}
-                    onChange={(e) => setTargetBusinessId(e.target.value)}
-                    required
-                    className="w-full sm:w-80 px-3 py-1.5 text-xs rounded-xl border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  >
-                    <option value="" disabled>
-                      -- Select Distributor Firm --
-                    </option>
-                    {distributors.map((d: any) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name} {d.gstin ? `(${d.gstin})` : ''}
+              {/* TOP SECTION: Place of Supply (State POS default Kerala 32), Due Date, and Distributor Firm */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+                {user?.role === 'super_admin' && !editingDocId && (
+                  <div className="bg-indigo-50/70 dark:bg-indigo-950/40 p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
+                      <label className="font-bold text-xs text-indigo-950 dark:text-indigo-200">
+                        Target Distributor Firm (Super-Admin Master Scope) *
+                      </label>
+                    </div>
+                    <select
+                      value={targetBusinessId}
+                      onChange={(e) => setTargetBusinessId(e.target.value)}
+                      required
+                      className="w-full sm:w-80 px-3 py-1.5 text-xs rounded-xl border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    >
+                      <option value="" disabled>
+                        -- Select Distributor Firm --
                       </option>
-                    ))}
-                  </select>
+                      {distributors.map((d: any) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name} {d.gstin ? `(${d.gstin})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                  {/* Place of Supply State (Default Kerala 32) */}
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Place of Supply (State POS) *</span>
+                    </label>
+                    <select
+                      value={placeOfSupply}
+                      onChange={(e) => setPlaceOfSupply(e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    >
+                      {Object.entries(INDIAN_STATES).map(([code, name]) => (
+                        <option key={code} value={code}>
+                          {code} - {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Payment Due Date */}
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Payment Due Date</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+
+                  {/* Tax Treatment Status */}
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs flex items-center justify-between">
+                    <span className="text-slate-500">Tax Treatment:</span>
+                    <span className="font-bold text-slate-900 dark:text-slate-100">
+                      {isInterState ? 'Inter-State (IGST 100%)' : 'Intra-State Kerala (CGST 50% + SGST 50%)'}
+                    </span>
+                  </div>
                 </div>
-              )}
+              </div>
 
               {/* Accounting Workflow Note */}
               <div className="p-2.5 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/40 rounded-xl flex items-center justify-between text-slate-700 dark:text-slate-300 text-[11px]">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
                   <span>
-                    <strong>Multi-Vendor Daybook:</strong> Enter purchases from different vendors on the same day in one go. Lines are automatically grouped and posted to each vendor's ledger.
+                    <strong>Multi-Vendor Daybook:</strong> Enter purchases from different vendors on the same day. Lines are automatically grouped and posted to each vendor's ledger.
                   </span>
                 </div>
                 <span className="font-semibold text-amber-800 dark:text-amber-300 hidden md:inline">
@@ -988,14 +1008,14 @@ export default function BillsPage() {
                 </button>
               </div>
 
-              {/* Daybook Single Entry Grid */}
+              {/* Daybook Single Entry Grid (Clean & Formatted with ample column widths) */}
               <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-xs">
                 <div className="overflow-x-auto max-h-[50vh]">
-                  <table className="w-full text-left text-xs min-w-[1380px]">
+                  <table className="w-full text-left text-xs min-w-[1240px]">
                     <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
                       <tr>
                         {/* 1. Vendor / Supplier (with Auto-Fill Checkbox) */}
-                        <th className="py-2.5 px-3 min-w-[190px]">
+                        <th className="py-2.5 px-3 min-w-[210px] w-56">
                           <div className="flex items-center justify-between gap-1">
                             <span className="font-bold">Vendor / Supplier *</span>
                             <label
@@ -1037,33 +1057,23 @@ export default function BillsPage() {
                           </div>
                         </th>
 
-                        {/* 4. Due Date */}
-                        <th className="py-2.5 px-2 w-32">
-                          <span>Due Date</span>
-                        </th>
-
-                        {/* 5. State / Place of Supply */}
-                        <th className="py-2.5 px-2 w-36">
-                          <span>State (POS)</span>
-                        </th>
-
-                        {/* 6. Item / Description */}
-                        <th className="py-2.5 px-3 min-w-[210px]">
+                        {/* 4. Item / Description */}
+                        <th className="py-2.5 px-3 min-w-[240px]">
                           <span className="font-bold">Item / Description *</span>
                         </th>
 
-                        {/* 7. HSN/SAC */}
-                        <th className="py-2.5 px-2 w-20">HSN/SAC</th>
+                        {/* 5. HSN/SAC */}
+                        <th className="py-2.5 px-2 w-24">HSN/SAC</th>
 
-                        {/* 8. Qty */}
-                        <th className="py-2.5 px-2 w-16 text-center">Qty</th>
+                        {/* 6. Qty */}
+                        <th className="py-2.5 px-2 w-24 text-center font-bold">Qty</th>
 
-                        {/* 9. Unit */}
-                        <th className="py-2.5 px-2 w-20 text-center">Unit</th>
+                        {/* 7. Unit */}
+                        <th className="py-2.5 px-2 w-24 text-center font-bold">Unit</th>
 
-                        {/* 10. Rate */}
-                        <th className="py-2.5 px-2 w-24 text-right">
-                          <span>Rate (₹)</span>
+                        {/* 8. Rate */}
+                        <th className="py-2.5 px-2 w-32 text-right">
+                          <span className="font-bold">Rate (₹)</span>
                           {isFixedRate && (
                             <span className="block text-[9px] text-amber-600 dark:text-amber-400 font-bold">
                               [Lot Total]
@@ -1071,17 +1081,17 @@ export default function BillsPage() {
                           )}
                         </th>
 
-                        {/* 11. GST % */}
-                        <th className="py-2.5 px-2 w-18 text-center">GST %</th>
+                        {/* 9. GST % */}
+                        <th className="py-2.5 px-2 w-24 text-center font-bold">GST %</th>
 
-                        {/* 12. Taxable */}
-                        <th className="py-2.5 px-3 text-right w-24">Taxable</th>
+                        {/* 10. Taxable */}
+                        <th className="py-2.5 px-3 text-right w-28">Taxable</th>
 
-                        {/* 13. Total */}
-                        <th className="py-2.5 px-3 text-right w-24">Total (₹)</th>
+                        {/* 11. Total */}
+                        <th className="py-2.5 px-3 text-right w-32 font-bold">Total (₹)</th>
 
-                        {/* 14. Action */}
-                        <th className="py-2.5 px-2 w-10 text-center"></th>
+                        {/* 12. Action */}
+                        <th className="py-2.5 px-2 w-12 text-center"></th>
                       </tr>
                     </thead>
 
@@ -1094,12 +1104,12 @@ export default function BillsPage() {
                             className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
                           >
                             {/* 1. Vendor Dropdown */}
-                            <td className="py-2 px-3">
+                            <td className="py-2.5 px-3">
                               <select
                                 required
                                 value={line.vendorId}
                                 onChange={(e) => handleRowVendorSelect(idx, e.target.value)}
-                                className="w-full px-2 py-1 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium"
+                                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium"
                               >
                                 <option value="">-- Select Vendor * --</option>
                                 {vendors.map((v) => (
@@ -1111,7 +1121,7 @@ export default function BillsPage() {
                             </td>
 
                             {/* 2. Supplier Bill / Inv # */}
-                            <td className="py-2 px-2">
+                            <td className="py-2.5 px-2">
                               <input
                                 type="text"
                                 placeholder="Bill / Inv #"
@@ -1121,65 +1131,32 @@ export default function BillsPage() {
                                   upd[idx].supplierBillNo = e.target.value;
                                   setLines(upd);
                                 }}
-                                className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                               />
                             </td>
 
                             {/* 3. Bill Date */}
-                            <td className="py-2 px-2">
+                            <td className="py-2.5 px-2">
                               <input
                                 type="date"
                                 required
                                 value={line.docDate}
                                 onChange={(e) => handleRowDateChange(idx, e.target.value)}
-                                className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                className="w-full px-2 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                               />
                             </td>
 
-                            {/* 4. Payment Due Date */}
-                            <td className="py-2 px-2">
-                              <input
-                                type="date"
-                                value={line.dueDate}
-                                onChange={(e) => {
-                                  const upd = [...lines];
-                                  upd[idx].dueDate = e.target.value;
-                                  setLines(upd);
-                                }}
-                                className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-                              />
-                            </td>
-
-                            {/* 5. Place of Supply State */}
-                            <td className="py-2 px-2">
-                              <select
-                                value={line.placeOfSupply || defaultKeralaState}
-                                onChange={(e) => {
-                                  const upd = [...lines];
-                                  upd[idx].placeOfSupply = e.target.value;
-                                  setLines(upd);
-                                }}
-                                className="w-full px-2 py-1 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
-                              >
-                                {Object.entries(INDIAN_STATES).map(([code, name]) => (
-                                  <option key={code} value={code}>
-                                    {code} - {name}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-
-                            {/* 6. Item / Description */}
-                            <td className="py-2 px-3">
+                            {/* 4. Item / Description */}
+                            <td className="py-2.5 px-3">
                               <div className="space-y-1">
                                 {items.length > 0 && (
                                   <select
                                     onChange={(e) => handleItemSelect(idx, e.target.value)}
-                                    className="w-full px-2 py-0.5 text-[10px] border border-slate-200 dark:border-slate-700 rounded-md bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    className="w-full px-2 py-1 text-[11px] border border-slate-200 dark:border-slate-700 rounded-md bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                                     defaultValue=""
                                   >
                                     <option value="" disabled>
-                                      -- Select from master items --
+                                      -- Select master item --
                                     </option>
                                     {items.map((i) => (
                                       <option key={i.id} value={i.id}>
@@ -1198,13 +1175,13 @@ export default function BillsPage() {
                                     upd[idx].description = e.target.value;
                                     setLines(upd);
                                   }}
-                                  className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
+                                  className="w-full px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
                                 />
                               </div>
                             </td>
 
-                            {/* 7. HSN/SAC */}
-                            <td className="py-2 px-2">
+                            {/* 5. HSN/SAC */}
+                            <td className="py-2.5 px-2">
                               <input
                                 type="text"
                                 placeholder="HSN"
@@ -1214,12 +1191,12 @@ export default function BillsPage() {
                                   upd[idx].hsnSac = e.target.value;
                                   setLines(upd);
                                 }}
-                                className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                className="w-full px-2 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                               />
                             </td>
 
-                            {/* 8. Qty */}
-                            <td className="py-2 px-2">
+                            {/* 6. Qty (Formatted & Clearly Visible) */}
+                            <td className="py-2.5 px-2">
                               <input
                                 type="number"
                                 min="0.01"
@@ -1231,12 +1208,12 @@ export default function BillsPage() {
                                   upd[idx].qty = parseFloat(e.target.value) || 0;
                                   setLines(upd);
                                 }}
-                                className="w-full px-2 py-1 text-xs text-center border border-slate-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold"
+                                className="w-full px-2 py-1.5 text-xs text-center border border-slate-300 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold"
                               />
                             </td>
 
-                            {/* 9. Unit */}
-                            <td className="py-2 px-2">
+                            {/* 7. Unit (Formatted & Clearly Visible) */}
+                            <td className="py-2.5 px-2">
                               <select
                                 value={line.unit || 'KG'}
                                 onChange={(e) => {
@@ -1244,7 +1221,7 @@ export default function BillsPage() {
                                   upd[idx].unit = e.target.value;
                                   setLines(upd);
                                 }}
-                                className="w-full px-1.5 py-1 text-xs text-center font-bold border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-400 bg-amber-50/70 dark:bg-slate-800 text-amber-900 dark:text-amber-300"
+                                className="w-full px-2 py-1.5 text-xs text-center font-bold border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-amber-50 dark:bg-slate-800 text-amber-900 dark:text-amber-200"
                               >
                                 {ITEM_UNITS.map((u) => (
                                   <option key={u} value={u}>
@@ -1254,8 +1231,8 @@ export default function BillsPage() {
                               </select>
                             </td>
 
-                            {/* 10. Rate (₹) */}
-                            <td className="py-2 px-2">
+                            {/* 8. Rate (₹) (Formatted & Clearly Visible) */}
+                            <td className="py-2.5 px-2">
                               <input
                                 type="number"
                                 min="0"
@@ -1268,12 +1245,12 @@ export default function BillsPage() {
                                   setLines(upd);
                                 }}
                                 placeholder="0.00"
-                                className="w-full px-2 py-1 text-xs text-right border border-slate-200 dark:border-slate-700 rounded-lg font-mono font-bold focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                className="w-full px-2.5 py-1.5 text-xs text-right border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                               />
                             </td>
 
-                            {/* 11. GST % */}
-                            <td className="py-2 px-2">
+                            {/* 9. GST % (Formatted & Clearly Visible) */}
+                            <td className="py-2.5 px-2">
                               <select
                                 value={line.gstRate}
                                 onChange={(e) => {
@@ -1281,7 +1258,7 @@ export default function BillsPage() {
                                   upd[idx].gstRate = Number(e.target.value);
                                   setLines(upd);
                                 }}
-                                className="w-full px-1.5 py-1 text-xs text-center border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                                className="w-full px-2 py-1.5 text-xs text-center border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
                               >
                                 {GST_RATES.map((rate) => (
                                   <option key={rate} value={rate}>
@@ -1291,26 +1268,26 @@ export default function BillsPage() {
                               </select>
                             </td>
 
-                            {/* 12. Taxable Value */}
-                            <td className="py-2 px-3 text-right font-mono font-semibold text-slate-800 dark:text-slate-200">
+                            {/* 10. Taxable Value */}
+                            <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 dark:text-slate-200">
                               ₹ {comp ? (comp.taxablePaise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
                             </td>
 
-                            {/* 13. Line Total */}
-                            <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                            {/* 11. Line Total */}
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
                               ₹ {comp ? (comp.lineTotal / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
                             </td>
 
-                            {/* 14. Delete */}
-                            <td className="py-2 px-2 text-center">
+                            {/* 12. Delete */}
+                            <td className="py-2.5 px-2 text-center">
                               {lines.length > 1 && (
                                 <button
                                   type="button"
                                   onClick={() => removeLine(idx)}
-                                  className="text-slate-400 hover:text-red-600 transition p-1"
+                                  className="text-slate-400 hover:text-red-600 transition p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40"
                                   title="Remove line"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Trash2 className="w-4 h-4" />
                                 </button>
                               )}
                             </td>
@@ -1331,11 +1308,16 @@ export default function BillsPage() {
                     <span>Kerala Tax Treatment (State 32)</span>
                   </div>
                   <p className="text-[11px]">
-                    Intra-State: <strong>CGST 50% + Kerala SGST 50%</strong>. Inter-State: <strong>IGST 100%</strong>.
+                    Place of Supply: <strong>{INDIAN_STATES[placeOfSupply] || 'Kerala'} ({placeOfSupply})</strong>.
+                  </p>
+                  <p className="text-[11px]">
+                    {isInterState
+                      ? 'Inter-State Transaction: IGST 100% applies.'
+                      : 'Intra-State Kerala: CGST 50% + Kerala SGST 50% applies.'}
                   </p>
                   {isFixedRate && (
                     <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium">
-                      ⚡ Fixed Rate Lot Active: Rate is line total directly (e.g. Mankda 250 KG @ ₹1,200 = Total ₹1,200).
+                      ⚡ Fixed Rate Lot Active: Rate entered is the total lot price directly (e.g. Mankda 250 KG @ ₹1,200 = Total ₹1,200).
                     </p>
                   )}
                 </div>

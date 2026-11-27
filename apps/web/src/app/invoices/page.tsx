@@ -28,7 +28,24 @@ import {
   Save,
   AlertTriangle,
   AlertCircle,
+  Building2,
+  Calendar,
+  Layers,
+  MapPin,
 } from 'lucide-react';
+
+interface SalesInvoiceLine {
+  partyId: string;
+  docNo: string;
+  docDate: string;
+  itemId?: string;
+  description: string;
+  hsnSac: string;
+  unit: string;
+  qty: number;
+  rateRupees: number;
+  gstRate: number;
+}
 
 export default function InvoicesPage() {
   const { business, user, hasPermission } = useAuth();
@@ -46,19 +63,30 @@ export default function InvoicesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [partyId, setPartyId] = useState('');
-  const [docNo, setDocNo] = useState('');
-  const [placeOfSupply, setPlaceOfSupply] = useState(business?.stateCode || '32'); // Kerala default
-  const [docDate, setDocDate] = useState(new Date().toISOString().split('T')[0]);
-  const [dueDate, setDueDate] = useState('');
-  const [lines, setLines] = useState<any[]>([
+  // Top header fields (default Kerala 32)
+  const defaultKeralaState = business?.stateCode || '32';
+  const todayDate = new Date().toISOString().split('T')[0];
+
+  const [placeOfSupply, setPlaceOfSupply] = useState<string>(defaultKeralaState);
+  const [dueDate, setDueDate] = useState<string>('');
+
+  // Feature toggles for Kerala produce / daybook
+  const [isFixedRate, setIsFixedRate] = useState(false);
+  const [autoFillParty, setAutoFillParty] = useState(true);
+  const [autoFillDate, setAutoFillDate] = useState(true);
+
+  // Daybook Line items
+  const [lines, setLines] = useState<SalesInvoiceLine[]>([
     {
+      partyId: '',
+      docNo: '',
+      docDate: todayDate,
       description: '',
       hsnSac: '',
-      unit: 'PCS',
+      unit: 'KG',
       qty: 1,
       rateRupees: 0,
-      gstRate: 18,
+      gstRate: 0,
     },
   ]);
 
@@ -102,14 +130,98 @@ export default function InvoicesPage() {
     fetchMasters();
   }, [user]);
 
-  const handlePartySelect = (id: string) => {
-    setPartyId(id);
-    const selected = parties.find((p) => p.id === id);
-    if (selected?.gstin && selected.gstin.length >= 2) {
-      setPlaceOfSupply(selected.gstin.substring(0, 2));
+  // Handle Fixed Rate Toggle
+  const handleToggleFixedRate = (checked: boolean) => {
+    setIsFixedRate(checked);
+    if (checked) {
+      const updated = lines.map((l) => ({
+        ...l,
+        gstRate: 0,
+        unit: l.unit || 'KG',
+      }));
+      setLines(updated);
     }
   };
 
+  // Auto-fill party toggle in table header
+  const handleToggleAutoFillParty = (checked: boolean) => {
+    setAutoFillParty(checked);
+    if (checked && lines.length > 1 && lines[0]?.partyId) {
+      const row0Party = lines[0].partyId;
+      const updated = lines.map((l, i) => {
+        if (i === 0) return l;
+        if (!l.partyId) {
+          return { ...l, partyId: row0Party };
+        }
+        return l;
+      });
+      setLines(updated);
+    }
+  };
+
+  // Auto-fill date toggle in table header
+  const handleToggleAutoFillDate = (checked: boolean) => {
+    setAutoFillDate(checked);
+    if (checked && lines.length > 1 && lines[0]?.docDate) {
+      const row0Date = lines[0].docDate;
+      const updated = lines.map((l, i) => {
+        if (i === 0) return l;
+        if (!l.docDate) {
+          return { ...l, docDate: row0Date };
+        }
+        return l;
+      });
+      setLines(updated);
+    }
+  };
+
+  // Party select per row
+  const handleRowPartySelect = (idx: number, pId: string) => {
+    const oldRow0Party = lines[0]?.partyId;
+    const updated = [...lines];
+    updated[idx] = {
+      ...updated[idx],
+      partyId: pId,
+    };
+
+    if (idx === 0 && autoFillParty) {
+      for (let i = 1; i < updated.length; i++) {
+        if (!updated[i].partyId || updated[i].partyId === oldRow0Party) {
+          updated[i] = {
+            ...updated[i],
+            partyId: pId,
+          };
+        }
+      }
+    }
+
+    setLines(updated);
+  };
+
+  // Date change per row
+  const handleRowDateChange = (idx: number, newDate: string) => {
+    const oldRow0Date = lines[0]?.docDate;
+    const updated = [...lines];
+    updated[idx] = {
+      ...updated[idx],
+      docDate: newDate,
+    };
+
+    if (idx === 0 && autoFillDate) {
+      for (let i = 1; i < updated.length; i++) {
+        if (!updated[i].docDate || updated[i].docDate === oldRow0Date) {
+          updated[i] = {
+            ...updated[i],
+            docDate: newDate,
+          };
+        }
+      }
+    }
+
+    setLines(updated);
+  };
+
+  // Master item select per row
   const handleItemSelect = (index: number, itemId: string) => {
     const item = items.find((i) => i.id === itemId);
     if (!item) return;
@@ -119,17 +231,33 @@ export default function InvoicesPage() {
       itemId: item.id,
       description: item.name,
       hsnSac: item.hsnSac || '',
-      unit: item.unit || 'PCS',
-      rateRupees: item.salePrice / 100,
-      gstRate: item.gstRate || 18,
+      unit: item.unit || 'KG',
+      rateRupees: (item.salePrice || item.purchasePrice || 0) / 100,
+      gstRate: isFixedRate ? 0 : (item.gstRate !== undefined ? item.gstRate : 0),
     };
     setLines(updated);
   };
 
+  // Add new line item
   const addLine = () => {
+    const row0 = lines[0];
+    const newPartyId = autoFillParty && row0?.partyId ? row0.partyId : '';
+    const newDate = autoFillDate && row0?.docDate ? row0.docDate : todayDate;
+
     setLines([
       ...lines,
-      { description: '', hsnSac: '', unit: 'PCS', qty: 1, rateRupees: 0, gstRate: 18 },
+      {
+        partyId: newPartyId,
+        docNo: '',
+        docDate: newDate,
+        itemId: '',
+        description: '',
+        hsnSac: '',
+        unit: 'KG',
+        qty: 1,
+        rateRupees: 0,
+        gstRate: isFixedRate ? 0 : 0,
+      },
     ]);
   };
 
@@ -139,14 +267,19 @@ export default function InvoicesPage() {
     }
   };
 
-  // Compute live totals
-  const isInterState = placeOfSupply !== (business?.stateCode || '32');
+  // Compute live totals based on top Place of Supply
+  const bizState = business?.stateCode || '32';
+  const isInterState = (placeOfSupply || defaultKeralaState) !== bizState;
+
   let computedSubtotal = 0n;
   let computedTaxTotal = 0n;
+
   const computedLines = lines.map((line) => {
     const qty = Number(line.qty) || 0;
     const ratePaise = BigInt(Math.round((Number(line.rateRupees) || 0) * 100));
-    const taxablePaise = BigInt(Math.round(qty * Number(ratePaise)));
+
+    // When isFixedRate is true: Rate entered is line total directly (e.g. Mankda 250 KG @ 1200 => Taxable: ₹1200)
+    const taxablePaise = isFixedRate ? ratePaise : BigInt(Math.round(qty * Number(ratePaise)));
 
     const taxRes = calculateLineTax({
       taxableAmount: taxablePaise,
@@ -158,12 +291,12 @@ export default function InvoicesPage() {
     computedTaxTotal += taxRes.totalTax;
 
     return {
-      description: line.description,
-      hsnSac: line.hsnSac,
-      unit: line.unit || 'PCS',
+      description: line.description || 'Goods / Services',
+      hsnSac: line.hsnSac || '',
+      unit: line.unit || 'KG',
       qty,
-      rate: Number(ratePaise),
-      discount: 0,
+      ratePaise: Number(ratePaise),
+      taxablePaise: Number(taxRes.taxableAmount),
       gstRate: Number(line.gstRate) || 0,
       cgst: Number(taxRes.cgst),
       sgst: Number(taxRes.sgst),
@@ -177,49 +310,96 @@ export default function InvoicesPage() {
 
   const resetForm = () => {
     setEditingDocId(null);
-    setPartyId('');
-    setDocNo('');
-    setDocDate(new Date().toISOString().split('T')[0]);
-    setDueDate('');
-    setPlaceOfSupply(business?.stateCode || '32');
-    setLines([{ description: '', hsnSac: '', unit: 'PCS', qty: 1, rateRupees: 0, gstRate: 18 }]);
+    setIsFixedRate(false);
+    setAutoFillParty(true);
+    setAutoFillDate(true);
     setErrorMsg(null);
+    setPlaceOfSupply(business?.stateCode || '32');
+    setDueDate('');
+
+    const firstPartyId = parties[0]?.id || '';
+
+    setLines([
+      {
+        partyId: firstPartyId,
+        docNo: '',
+        docDate: todayDate,
+        itemId: '',
+        description: '',
+        hsnSac: '',
+        unit: 'KG',
+        qty: 1,
+        rateRupees: 0,
+        gstRate: 0,
+      },
+    ]);
   };
 
   const handleOpenEdit = (doc: any) => {
     if (doc.status === 'posted' && user?.role !== 'super_admin') {
-      alert('⚠️ This invoice is Saved & Locked. Posted accounting entries cannot be modified to preserve ledger integrity.');
+      alert(
+        '⚠️ This invoice is Saved & Locked. Posted accounting entries cannot be modified to preserve ledger integrity.'
+      );
       return;
     }
     setEditingDocId(doc.id);
-    setPartyId(doc.partyId || '');
-    setDocNo(doc.docNo || '');
-    setDocDate(doc.docDate || new Date().toISOString().split('T')[0]);
-    setDueDate(doc.dueDate || '');
-    setPlaceOfSupply(doc.placeOfSupply || business?.stateCode || '32');
     setTargetBusinessId(doc.businessId || '');
+    setPlaceOfSupply(doc.placeOfSupply || business?.stateCode || '32');
+    setDueDate(doc.dueDate || '');
+
+    const docDateVal = doc.docDate || todayDate;
+    const partyVal = doc.partyId || '';
+    const docNoVal = doc.docNo || '';
+
     if (doc.lines && doc.lines.length > 0) {
       setLines(
         doc.lines.map((l: any) => ({
+          partyId: partyVal,
+          docNo: docNoVal,
+          docDate: docDateVal,
+          itemId: l.itemId || '',
           description: l.description,
           hsnSac: l.hsnSac || '',
-          unit: l.unit || 'PCS',
+          unit: l.unit || 'KG',
           qty: l.qty,
           rateRupees: (l.rate || 0) / 100,
-          gstRate: l.gstRate || 18,
+          gstRate: l.gstRate !== undefined ? l.gstRate : 0,
         }))
       );
+    } else {
+      setLines([
+        {
+          partyId: partyVal,
+          docNo: docNoVal,
+          docDate: docDateVal,
+          itemId: '',
+          description: '',
+          hsnSac: '',
+          unit: 'KG',
+          qty: 1,
+          rateRupees: 0,
+          gstRate: 0,
+        },
+      ]);
     }
     setIsAddOpen(true);
   };
 
   const handleSaveInvoice = async (finalizeAndLock: boolean) => {
-    if (!partyId) {
-      setErrorMsg('Please select a customer.');
+    if (lines.length === 0) {
+      setErrorMsg('Please add at least one line item.');
       return;
     }
-    if (computedLines.length === 0 || computedLines.some((l) => !l.description)) {
-      setErrorMsg('Please enter description for all line items.');
+
+    const missingPartyIdx = lines.findIndex((l) => !l.partyId);
+    if (missingPartyIdx !== -1) {
+      setErrorMsg(`Row ${missingPartyIdx + 1}: Please select a Customer / Party.`);
+      return;
+    }
+
+    const missingDescIdx = lines.findIndex((l) => !l.description || !l.description.trim());
+    if (missingDescIdx !== -1) {
+      setErrorMsg(`Row ${missingDescIdx + 1}: Please enter item name or description.`);
       return;
     }
 
@@ -234,42 +414,129 @@ export default function InvoicesPage() {
       setSubmitting(true);
       setErrorMsg(null);
 
-      const payload: any = {
-        businessId: user?.role === 'super_admin' ? (targetBusinessId || undefined) : undefined,
-        docType: 'sales_invoice',
-        docNo: docNo.trim() || undefined,
-        docDate,
-        dueDate: dueDate || undefined,
-        partyId,
-        placeOfSupply,
-        subtotal: Number(computedSubtotal),
-        taxTotal: Number(computedTaxTotal),
-        roundOff: Number(roundOff),
-        total: Number(finalTotal),
-        lines: computedLines,
-      };
+      const targetPos = placeOfSupply || defaultKeralaState;
 
-      let savedDocId = editingDocId;
       if (editingDocId) {
-        // Update existing draft
-        const res = await api.put(`/api/v1/documents/${editingDocId}`, payload);
-        savedDocId = res.document?.id || editingDocId;
-      } else {
-        // Create new invoice
-        const res = await api.post('/api/v1/documents', payload);
-        savedDocId = res.document?.id;
-      }
+        // Update single existing invoice
+        const line0 = lines[0];
+        const payloadLines = lines.map((l) => {
+          const qty = Number(l.qty) || 0;
+          const ratePaise = BigInt(Math.round((Number(l.rateRupees) || 0) * 100));
+          const taxablePaise = isFixedRate ? ratePaise : BigInt(Math.round(qty * Number(ratePaise)));
+          const taxRes = calculateLineTax({
+            taxableAmount: taxablePaise,
+            gstRate: Number(l.gstRate) || 0,
+            isInterState,
+          });
 
-      // If user chose Save & Lock, post it immediately
-      if (finalizeAndLock && savedDocId) {
-        await api.post(`/api/v1/documents/${savedDocId}/post`);
+          return {
+            itemId: l.itemId || undefined,
+            description: l.description.trim(),
+            hsnSac: l.hsnSac || '',
+            unit: l.unit || 'KG',
+            qty,
+            rate: Number(ratePaise),
+            discount: 0,
+            gstRate: Number(l.gstRate) || 0,
+            cgst: Number(taxRes.cgst),
+            sgst: Number(taxRes.sgst),
+            igst: Number(taxRes.igst),
+            lineTotal: Number(taxRes.lineTotal),
+          };
+        });
+
+        const payload: any = {
+          businessId: user?.role === 'super_admin' ? (targetBusinessId || undefined) : undefined,
+          docType: 'sales_invoice',
+          docNo: line0.docNo?.trim() || undefined,
+          docDate: line0.docDate || todayDate,
+          dueDate: dueDate || undefined,
+          partyId: line0.partyId,
+          placeOfSupply: targetPos,
+          subtotal: Number(computedSubtotal),
+          taxTotal: Number(computedTaxTotal),
+          roundOff: Number(roundOff),
+          total: Number(finalTotal),
+          lines: payloadLines,
+        };
+
+        await api.put(`/api/v1/documents/${editingDocId}`, payload);
+        if (finalizeAndLock) {
+          await api.post(`/api/v1/documents/${editingDocId}/post`);
+        }
+      } else {
+        // Multi-customer Daybook: group rows by partyId
+        const partyGroups: Record<string, typeof lines> = {};
+        lines.forEach((l) => {
+          if (!partyGroups[l.partyId]) partyGroups[l.partyId] = [];
+          partyGroups[l.partyId].push(l);
+        });
+
+        const docsToCreate = Object.entries(partyGroups).map(([pId, groupLines]) => {
+          let grpSubtotal = 0n;
+          let grpTaxTotal = 0n;
+
+          const compGroupLines = groupLines.map((l) => {
+            const qty = Number(l.qty) || 0;
+            const ratePaise = BigInt(Math.round((Number(l.rateRupees) || 0) * 100));
+            const taxablePaise = isFixedRate ? ratePaise : BigInt(Math.round(qty * Number(ratePaise)));
+            const taxRes = calculateLineTax({
+              taxableAmount: taxablePaise,
+              gstRate: Number(l.gstRate) || 0,
+              isInterState,
+            });
+
+            grpSubtotal += taxRes.taxableAmount;
+            grpTaxTotal += taxRes.totalTax;
+
+            return {
+              itemId: l.itemId || undefined,
+              description: l.description.trim(),
+              hsnSac: l.hsnSac || '',
+              unit: l.unit || 'KG',
+              qty,
+              rate: Number(ratePaise),
+              discount: 0,
+              gstRate: Number(l.gstRate) || 0,
+              cgst: Number(taxRes.cgst),
+              sgst: Number(taxRes.sgst),
+              igst: Number(taxRes.igst),
+              lineTotal: Number(taxRes.lineTotal),
+            };
+          });
+
+          const grpUnrounded = grpSubtotal + grpTaxTotal;
+          const { roundOff: grpRoundOff, finalTotal: grpFinalTotal } = calculateRoundOff(grpUnrounded);
+          const firstLine = groupLines[0];
+
+          return {
+            businessId: user?.role === 'super_admin' ? (targetBusinessId || undefined) : undefined,
+            docType: 'sales_invoice',
+            docNo: firstLine.docNo?.trim() || undefined,
+            docDate: firstLine.docDate || todayDate,
+            dueDate: dueDate || undefined,
+            partyId: pId,
+            placeOfSupply: targetPos,
+            subtotal: Number(grpSubtotal),
+            taxTotal: Number(grpTaxTotal),
+            roundOff: Number(grpRoundOff),
+            total: Number(grpFinalTotal),
+            lines: compGroupLines,
+          };
+        });
+
+        await api.post('/api/v1/documents/batch', {
+          documents: docsToCreate,
+          finalizeAndLock,
+          businessId: user?.role === 'super_admin' ? (targetBusinessId || undefined) : undefined,
+        });
       }
 
       setIsAddOpen(false);
       resetForm();
-      fetchInvoices();
+      await fetchInvoices();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to save invoice');
+      setErrorMsg(err.message || 'Failed to save sales invoice.');
     } finally {
       setSubmitting(false);
     }
@@ -290,9 +557,16 @@ export default function InvoicesPage() {
     }
   };
 
-  const handleDeleteDraft = async (id: string, number: string) => {
+  const handleDeleteDraft = async (id: string, docNo: string) => {
     const isOverride = user?.role === 'super_admin';
-    if (!confirm(isOverride ? `⚠️ Super-Admin Master Override:\nPermanently delete invoice #${number}? This will delete the entry across all distributor accounting ledgers.` : `Delete draft invoice #${number}? This will permanently remove this draft.`)) return;
+    if (
+      !confirm(
+        isOverride
+          ? `⚠️ Super-Admin Master Override:\nPermanently delete invoice #${docNo}? This will delete the entry across all distributor accounting ledgers.`
+          : `Delete draft invoice #${docNo}? This will permanently remove this draft.`
+      )
+    )
+      return;
     try {
       await api.delete(`/api/v1/documents/${id}`);
       fetchInvoices();
@@ -302,32 +576,17 @@ export default function InvoicesPage() {
   };
 
   const handleVoid = async (id: string) => {
-    if (!confirm('Void this invoice? This will reverse all posted accounting entries.')) return;
+    if (
+      !confirm(
+        'Void this invoice? This will reverse all posted accounting ledger entries.'
+      )
+    )
+      return;
     try {
       await api.post(`/api/v1/documents/${id}/void`);
       fetchInvoices();
     } catch (err: any) {
-      alert(err.message || 'Failed to void');
-    }
-  };
-
-  const handleDownloadPdf = async (id: string) => {
-    try {
-      const data = await api.get(`/api/v1/documents/${id}/pdf-data`);
-      downloadInvoicePdf(data);
-    } catch (err: any) {
-      alert(err.message || 'Failed to generate PDF');
-    }
-  };
-
-  const handleSendEmail = async (id: string) => {
-    const toEmail = prompt('Enter customer recipient email:');
-    if (!toEmail) return;
-    try {
-      const res = await api.post(`/api/v1/documents/${id}/email`, { toEmail });
-      alert(res.message || 'Email sent successfully');
-    } catch (err: any) {
-      alert(err.message || 'Failed to send email');
+      alert(err.message || 'Failed to void invoice');
     }
   };
 
@@ -341,34 +600,33 @@ export default function InvoicesPage() {
   return (
     <AppShell currentMenu="sales_invoices">
       <div className="space-y-6">
+        {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <span>Sales Invoices</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 font-medium border border-blue-300/40">
-                Tax Invoicing & GST
+              <span>Sales Invoices & Daybook</span>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-medium border border-emerald-300/40">
+                Kerala Base (State 32)
               </span>
             </h1>
             <p className="text-xs text-slate-500">
-              GST-compliant tax invoicing with Unit Measures, client-side PDF export, and Draft vs Lock controls
+              Manage client billing, single-entry daybook billing across multiple customers, Kerala GST taxation (32), and Fixed Rate / Lumpsum Lot calculations
             </p>
           </div>
 
-          {hasPermission('sales_invoices', 'create') && (
-            <button
-              onClick={() => {
-                resetForm();
-                setIsAddOpen(true);
-              }}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition active:scale-95"
-            >
-              <Plus className="w-4 h-4 mr-1.5" />
-              Create Tax Invoice
-            </button>
-          )}
+          <button
+            onClick={() => {
+              resetForm();
+              setIsAddOpen(true);
+            }}
+            className="inline-flex items-center space-x-1.5 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/20 transition transform active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Sales Invoice</span>
+          </button>
         </div>
 
-        {/* Filter bar */}
+        {/* Search & Overview Filter Bar */}
         <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative w-full sm:w-80">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -382,29 +640,31 @@ export default function InvoicesPage() {
           </div>
 
           <div className="flex items-center space-x-2 text-xs font-semibold text-slate-500">
-            <span>Total Invoices:</span>
+            <span>Total Recorded:</span>
             <span className="font-bold text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-              {filteredInvoices.length}
+              {filteredInvoices.length} invoice(s)
             </span>
           </div>
         </div>
 
-        {/* Invoices List */}
+        {/* Invoices Table */}
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs min-w-[950px]">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 border-b uppercase font-semibold">
+              <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-4 whitespace-nowrap">Invoice #</th>
                   {user?.role === 'super_admin' && (
-                    <th className="py-3 px-4 whitespace-nowrap text-indigo-600 dark:text-indigo-400">Distributor Firm</th>
+                    <th className="py-3 px-4 whitespace-nowrap text-indigo-600 dark:text-indigo-400">
+                      Distributor Firm
+                    </th>
                   )}
                   <th className="py-3 px-4 whitespace-nowrap">Date</th>
-                  <th className="py-3 px-4 whitespace-nowrap min-w-[180px]">Customer</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[180px]">Customer / Party</th>
                   <th className="py-3 px-4 whitespace-nowrap">Items & Units</th>
                   <th className="py-3 px-4 text-right whitespace-nowrap">Taxable Value</th>
-                  <th className="py-3 px-4 text-right whitespace-nowrap">Total Tax</th>
-                  <th className="py-3 px-4 text-right whitespace-nowrap">Invoice Total (₹)</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">GST</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Total (₹)</th>
                   <th className="py-3 px-4 text-center whitespace-nowrap">Status & Lock</th>
                   <th className="py-3 px-4 text-right whitespace-nowrap">Actions</th>
                 </tr>
@@ -412,19 +672,28 @@ export default function InvoicesPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {loading ? (
                   <tr>
-                    <td colSpan={user?.role === 'super_admin' ? 10 : 9} className="py-8 text-center text-slate-400">
-                      Loading invoices...
+                    <td
+                      colSpan={user?.role === 'super_admin' ? 10 : 9}
+                      className="py-8 text-center text-slate-400"
+                    >
+                      Loading sales invoices...
                     </td>
                   </tr>
                 ) : filteredInvoices.length === 0 ? (
                   <tr>
-                    <td colSpan={user?.role === 'super_admin' ? 10 : 9} className="py-8 text-center text-slate-400">
-                      No invoices found. Click 'Create Tax Invoice' to generate one.
+                    <td
+                      colSpan={user?.role === 'super_admin' ? 10 : 9}
+                      className="py-8 text-center text-slate-400"
+                    >
+                      No sales invoices found. Click 'Create Sales Invoice' to generate your first invoice.
                     </td>
                   </tr>
                 ) : (
                   filteredInvoices.map((inv) => (
-                    <tr key={inv.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition">
+                    <tr
+                      key={inv.id}
+                      className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition"
+                    >
                       <td className="py-3 px-4 font-mono font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap">
                         {inv.docNo}
                       </td>
@@ -447,7 +716,7 @@ export default function InvoicesPage() {
                           <div className="space-y-0.5">
                             {inv.lines.slice(0, 2).map((l: any, i: number) => (
                               <div key={i} className="text-[11px] truncate max-w-[200px]">
-                                {l.description} ({l.qty} {l.unit || 'PCS'})
+                                {l.description} ({l.qty} {l.unit || 'KG'})
                               </div>
                             ))}
                             {inv.lines.length > 2 && (
@@ -463,7 +732,7 @@ export default function InvoicesPage() {
                       <td className="py-3 px-4 text-right font-medium whitespace-nowrap">
                         ₹ {formatPaise(inv.subtotal)}
                       </td>
-                      <td className="py-3 px-4 text-right font-medium text-blue-600 whitespace-nowrap">
+                      <td className="py-3 px-4 text-right font-medium text-emerald-600 whitespace-nowrap">
                         ₹ {formatPaise(inv.taxTotal)}
                       </td>
                       <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
@@ -517,25 +786,11 @@ export default function InvoicesPage() {
                         ) : inv.status === 'posted' ? (
                           <div className="inline-flex items-center space-x-1">
                             <button
-                              onClick={() => handleDownloadPdf(inv.id)}
-                              className="p-1 text-slate-400 hover:text-blue-600 rounded transition"
-                              title="Download GST PDF"
-                            >
-                              <Download className="w-3.5 h-3.5 inline" />
-                            </button>
-                            <button
-                              onClick={() => handleSendEmail(inv.id)}
-                              className="p-1 text-slate-400 hover:text-blue-600 rounded transition"
-                              title="Email Invoice"
-                            >
-                              <Mail className="w-3.5 h-3.5 inline" />
-                            </button>
-                            <button
                               onClick={() => handleVoid(inv.id)}
-                              className="px-2 py-0.5 bg-red-100 dark:bg-red-950/50 hover:bg-red-200 text-red-700 dark:text-red-300 rounded-lg text-[10px] font-semibold transition inline-flex items-center"
-                              title="Void invoice & reverse ledger"
+                              className="px-2 py-1 bg-red-100 dark:bg-red-950/50 hover:bg-red-200 text-red-700 dark:text-red-300 rounded-lg text-[11px] font-semibold transition"
+                              title="Void invoice & reverse ledger entries"
                             >
-                              <Ban className="w-2.5 h-2.5 mr-0.5" />
+                              <Ban className="w-3 h-3 inline mr-1" />
                               <span>Void</span>
                             </button>
                             {user?.role === 'super_admin' && (
@@ -582,28 +837,35 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      {/* CREATE / EDIT INVOICE MODAL */}
+      {/* =========================================================================
+          CREATE / EDIT SALES INVOICE & MULTI-CUSTOMER DAYBOOK MODAL
+      ========================================================================= */}
       {isAddOpen && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
           style={{ zIndex: 100, pointerEvents: 'auto' }}
         >
           <div
-            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 relative z-[101]"
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-[96vw] xl:max-w-7xl w-full max-h-[94vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 relative z-[101]"
             style={{ zIndex: 101 }}
           >
             {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-blue-50/50 via-slate-50 to-slate-50 dark:from-slate-800/40 dark:to-slate-900">
+            <div className="px-6 py-3.5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-blue-50/60 via-slate-50 to-slate-50 dark:from-slate-800/50 dark:to-slate-900">
               <div className="flex items-center space-x-2.5">
                 <div className="p-2 bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 rounded-xl">
                   {editingDocId ? <Edit3 className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
-                    {editingDocId ? 'Edit Draft Tax Invoice' : 'Create GST Tax Invoice'}
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <span>
+                      {editingDocId ? 'Edit Draft Tax Invoice' : 'Create Sales Invoice / Daybook Entry'}
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-300/40">
+                      Kerala (32) Base Location
+                    </span>
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    Generate compliant sales invoices with Unit of Measures (KG, BOX, PCS, etc.), and choose Save as Draft or Final Save & Lock.
+                    Client billing and multi-customer sales daybook, Kerala state taxation (32), unit measures (KG, BOX, PCS), and Fixed Rate / Lumpsum Lot calculations.
                   </p>
                 </div>
               </div>
@@ -616,7 +878,7 @@ export default function InvoicesPage() {
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
               {errorMsg && (
                 <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 text-xs flex items-center space-x-2">
                   <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-500" />
@@ -624,29 +886,25 @@ export default function InvoicesPage() {
                 </div>
               )}
 
-              {/* Warning Banner regarding Save vs Lock */}
-              <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 rounded-xl flex items-start gap-2.5 text-slate-700 dark:text-slate-300 text-[11px]">
-                <AlertTriangle className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold text-blue-800 dark:text-blue-300">Important Accounting Workflow:</span>{' '}
-                  <strong>Save as Draft</strong> saves the invoice in editable status. <strong>Final Save & Lock</strong> posts double-entry accounts receivable and tax ledgers, making the entry permanently immutable.
-                </div>
-              </div>
-
-              {/* Customer & Header */}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60">
+              {/* TOP SECTION: Place of Supply (Default Kerala 32), Due Date, and Distributor Firm */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
                 {user?.role === 'super_admin' && !editingDocId && (
-                  <div className="sm:col-span-4 bg-indigo-50/70 dark:bg-indigo-950/40 p-3 rounded-xl border border-indigo-200 dark:border-indigo-800">
-                    <label className="block font-bold text-indigo-900 dark:text-indigo-300 mb-1">
-                      🏢 Target Distributor Firm (Super-Admin Master Scope) *
-                    </label>
+                  <div className="bg-indigo-50/70 dark:bg-indigo-950/40 p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
+                      <label className="font-bold text-xs text-indigo-950 dark:text-indigo-200">
+                        Target Distributor Firm (Super-Admin Master Scope) *
+                      </label>
+                    </div>
                     <select
                       value={targetBusinessId}
                       onChange={(e) => setTargetBusinessId(e.target.value)}
                       required
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      className="w-full sm:w-80 px-3 py-1.5 text-xs rounded-xl border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     >
-                      <option value="" disabled>-- Select Distributor Firm --</option>
+                      <option value="" disabled>
+                        -- Select Distributor Firm --
+                      </option>
                       {distributors.map((d: any) => (
                         <option key={d.id} value={d.id}>
                           {d.name} {d.gstin ? `(${d.gstin})` : ''}
@@ -656,140 +914,253 @@ export default function InvoicesPage() {
                   </div>
                 )}
 
-                <div className="sm:col-span-2">
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Customer *
-                  </label>
-                  <select
-                    required
-                    value={partyId}
-                    onChange={(e) => handlePartySelect(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  >
-                    <option value="">Select customer...</option>
-                    {parties.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} {p.gstin ? `(${p.gstin})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                  {/* Place of Supply State (Default Kerala 32) */}
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Place of Supply (State POS) *</span>
+                    </label>
+                    <select
+                      value={placeOfSupply}
+                      onChange={(e) => setPlaceOfSupply(e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      {Object.entries(INDIAN_STATES).map(([code, name]) => (
+                        <option key={code} value={code}>
+                          {code} - {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Invoice # (Auto if empty)
-                  </label>
-                  <input
-                    type="text"
-                    value={docNo}
-                    onChange={(e) => setDocNo(e.target.value)}
-                    placeholder="Auto-generated"
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                </div>
+                  {/* Payment Due Date */}
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Payment Due Date</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Place of Supply (State) *
-                  </label>
-                  <select
-                    value={placeOfSupply}
-                    onChange={(e) => setPlaceOfSupply(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  >
-                    {Object.entries(INDIAN_STATES).map(([code, name]) => (
-                      <option key={code} value={code}>
-                        {code} - {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Invoice Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={docDate}
-                    onChange={(e) => setDocDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Due Date
-                  </label>
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                </div>
-
-                <div className="sm:col-span-2 flex items-center pt-5">
-                  <span className="text-[11px] font-medium text-slate-500">
-                    Tax Treatment:{' '}
-                    <strong className="text-slate-900 dark:text-slate-200">
-                      {isInterState ? 'Inter-State (IGST 100%)' : 'Intra-State (CGST 50% + SGST 50%)'}
-                    </strong>
-                  </span>
+                  {/* Tax Treatment Status */}
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs flex items-center justify-between">
+                    <span className="text-slate-500">Tax Treatment:</span>
+                    <span className="font-bold text-slate-900 dark:text-slate-100">
+                      {isInterState ? 'Inter-State (IGST 100%)' : 'Intra-State Kerala (CGST 50% + SGST 50%)'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Line Items Table */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                    Invoice Line Items
+              {/* Accounting Workflow Note */}
+              <div className="p-2.5 bg-blue-50/80 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-900/40 rounded-xl flex items-center justify-between text-slate-700 dark:text-slate-300 text-[11px]">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                  <span>
+                    <strong>Multi-Customer Daybook:</strong> Generate sales invoices for different clients in one entry. Invoices are automatically grouped and posted to each customer's account.
+                  </span>
+                </div>
+                <span className="font-semibold text-blue-800 dark:text-blue-300 hidden md:inline">
+                  Draft = Editable | Final Save & Lock = Immutable
+                </span>
+              </div>
+
+              {/* Line Items Table Control Bar: Fixed Rate Checkbox on LEFT of Add Line Item */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Sales Daybook & Line Items ({lines.length})</span>
                   </h4>
-                  <button
-                    type="button"
-                    onClick={addLine}
-                    className="inline-flex items-center space-x-1 text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400"
+
+                  {/* Fixed Rate Checkbox on LEFT of Add Line Item */}
+                  <label
+                    className={`inline-flex items-center gap-2 cursor-pointer px-3 py-1 rounded-xl border text-xs font-bold transition select-none shadow-xs ${
+                      isFixedRate
+                        ? 'bg-blue-100 text-blue-900 border-blue-400 dark:bg-blue-900/60 dark:text-blue-200 dark:border-blue-700'
+                        : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                    }`}
+                    title="Fixed Rate mode: Rate entered is the line total directly (e.g. Mankda 250 KG @ ₹1200 => Total ₹1200, 0% GST)"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ Add Line Item</span>
-                  </button>
+                    <input
+                      type="checkbox"
+                      checked={isFixedRate}
+                      onChange={(e) => handleToggleFixedRate(e.target.checked)}
+                      className="w-3.5 h-3.5 text-blue-600 rounded focus:ring-0 cursor-pointer accent-blue-600"
+                    />
+                    <span>Fixed Rate / Lumpsum Lot (Rate is Total, 0% GST)</span>
+                  </label>
                 </div>
 
-                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-xs">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 dark:bg-slate-800/80 font-semibold text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={addLine}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-xs transition transform active:scale-95"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Add Line Item</span>
+                </button>
+              </div>
+
+              {/* Daybook Single Entry Grid (Clean & Formatted with ample column widths) */}
+              <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-xs">
+                <div className="overflow-x-auto max-h-[50vh]">
+                  <table className="w-full text-left text-xs min-w-[1240px]">
+                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
                       <tr>
-                        <th className="py-2.5 px-3 w-1/3">Item / Description *</th>
-                        <th className="py-2.5 px-2 w-20">HSN/SAC</th>
-                        <th className="py-2.5 px-2 w-20 text-center">Qty</th>
-                        <th className="py-2.5 px-2 w-20 text-center">Unit</th>
-                        <th className="py-2.5 px-2 w-24 text-right">Rate (₹)</th>
-                        <th className="py-2.5 px-2 w-20 text-center">GST %</th>
-                        <th className="py-2.5 px-3 text-right">Taxable</th>
-                        <th className="py-2.5 px-3 text-right">Total (₹)</th>
-                        <th className="py-2.5 px-2 w-10 text-center"></th>
+                        {/* 1. Customer / Party (with Auto-Fill Checkbox) */}
+                        <th className="py-2.5 px-3 min-w-[210px] w-56">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-bold">Customer / Party *</span>
+                            <label
+                              className="inline-flex items-center gap-1 text-[10px] text-blue-700 dark:text-blue-300 font-normal cursor-pointer select-none"
+                              title="Auto-fill down: Copy row 1 customer to subsequent rows"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={autoFillParty}
+                                onChange={(e) => handleToggleAutoFillParty(e.target.checked)}
+                                className="w-3 h-3 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600"
+                              />
+                              <span>Auto-fill</span>
+                            </label>
+                          </div>
+                        </th>
+
+                        {/* 2. Invoice # */}
+                        <th className="py-2.5 px-2 w-32">
+                          <span>Invoice #</span>
+                        </th>
+
+                        {/* 3. Invoice Date (with Auto-Fill Checkbox) */}
+                        <th className="py-2.5 px-2 w-36">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-bold">Invoice Date *</span>
+                            <label
+                              className="inline-flex items-center gap-1 text-[10px] text-blue-700 dark:text-blue-300 font-normal cursor-pointer select-none"
+                              title="Auto-fill down: Copy row 1 date to subsequent rows"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={autoFillDate}
+                                onChange={(e) => handleToggleAutoFillDate(e.target.checked)}
+                                className="w-3 h-3 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600"
+                              />
+                              <span>Auto-fill</span>
+                            </label>
+                          </div>
+                        </th>
+
+                        {/* 4. Item / Description */}
+                        <th className="py-2.5 px-3 min-w-[240px]">
+                          <span className="font-bold">Item / Description *</span>
+                        </th>
+
+                        {/* 5. HSN/SAC */}
+                        <th className="py-2.5 px-2 w-24">HSN/SAC</th>
+
+                        {/* 6. Qty */}
+                        <th className="py-2.5 px-2 w-24 text-center font-bold">Qty</th>
+
+                        {/* 7. Unit */}
+                        <th className="py-2.5 px-2 w-24 text-center font-bold">Unit</th>
+
+                        {/* 8. Rate */}
+                        <th className="py-2.5 px-2 w-32 text-right">
+                          <span className="font-bold">Rate (₹)</span>
+                          {isFixedRate && (
+                            <span className="block text-[9px] text-blue-600 dark:text-blue-400 font-bold">
+                              [Lot Total]
+                            </span>
+                          )}
+                        </th>
+
+                        {/* 9. GST % */}
+                        <th className="py-2.5 px-2 w-24 text-center font-bold">GST %</th>
+
+                        {/* 10. Taxable */}
+                        <th className="py-2.5 px-3 text-right w-28">Taxable</th>
+
+                        {/* 11. Total */}
+                        <th className="py-2.5 px-3 text-right w-32 font-bold">Total (₹)</th>
+
+                        {/* 12. Action */}
+                        <th className="py-2.5 px-2 w-12 text-center"></th>
                       </tr>
                     </thead>
+
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
                       {lines.map((line, idx) => {
                         const comp = computedLines[idx];
                         return (
-                          <tr key={idx}>
-                            <td className="py-2 px-3">
+                          <tr
+                            key={idx}
+                            className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                          >
+                            {/* 1. Customer Dropdown */}
+                            <td className="py-2.5 px-3">
+                              <select
+                                required
+                                value={line.partyId}
+                                onChange={(e) => handleRowPartySelect(idx, e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400 font-medium"
+                              >
+                                <option value="">-- Select Customer * --</option>
+                                {parties.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.name} {p.gstin ? `(${p.gstin.slice(0, 4)}...)` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+
+                            {/* 2. Invoice # */}
+                            <td className="py-2.5 px-2">
+                              <input
+                                type="text"
+                                placeholder="Auto if blank"
+                                value={line.docNo}
+                                onChange={(e) => {
+                                  const upd = [...lines];
+                                  upd[idx].docNo = e.target.value;
+                                  setLines(upd);
+                                }}
+                                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                              />
+                            </td>
+
+                            {/* 3. Invoice Date */}
+                            <td className="py-2.5 px-2">
+                              <input
+                                type="date"
+                                required
+                                value={line.docDate}
+                                onChange={(e) => handleRowDateChange(idx, e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                              />
+                            </td>
+
+                            {/* 4. Item / Description */}
+                            <td className="py-2.5 px-3">
                               <div className="space-y-1">
                                 {items.length > 0 && (
                                   <select
                                     onChange={(e) => handleItemSelect(idx, e.target.value)}
-                                    className="w-full px-2 py-1 text-[11px] border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    className="w-full px-2 py-1 text-[11px] border border-slate-200 dark:border-slate-700 rounded-md bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                                     defaultValue=""
                                   >
                                     <option value="" disabled>
-                                      -- Select from master items --
+                                      -- Select master item --
                                     </option>
                                     {items.map((i) => (
                                       <option key={i.id} value={i.id}>
-                                        {i.name} ({i.unit || 'PCS'})
+                                        {i.name} ({i.unit || 'KG'})
                                       </option>
                                     ))}
                                   </select>
@@ -797,19 +1168,20 @@ export default function InvoicesPage() {
                                 <input
                                   type="text"
                                   required
-                                  placeholder="Item name / description"
+                                  placeholder="Item name / Mankda / Description *"
                                   value={line.description}
                                   onChange={(e) => {
                                     const upd = [...lines];
                                     upd[idx].description = e.target.value;
                                     setLines(upd);
                                   }}
-                                  className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                  className="w-full px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
                                 />
                               </div>
                             </td>
 
-                            <td className="py-2 px-2">
+                            {/* 5. HSN/SAC */}
+                            <td className="py-2.5 px-2">
                               <input
                                 type="text"
                                 placeholder="HSN"
@@ -819,34 +1191,37 @@ export default function InvoicesPage() {
                                   upd[idx].hsnSac = e.target.value;
                                   setLines(upd);
                                 }}
-                                className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                               />
                             </td>
 
-                            <td className="py-2 px-2">
+                            {/* 6. Qty (Formatted & Clearly Visible) */}
+                            <td className="py-2.5 px-2">
                               <input
                                 type="number"
-                                min="1"
+                                min="0.01"
+                                step="any"
                                 required
                                 value={line.qty}
                                 onChange={(e) => {
                                   const upd = [...lines];
-                                  upd[idx].qty = Math.max(1, parseInt(e.target.value) || 1);
+                                  upd[idx].qty = parseFloat(e.target.value) || 0;
                                   setLines(upd);
                                 }}
-                                className="w-full px-2 py-1 text-xs text-center border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                className="w-full px-2 py-1.5 text-xs text-center border border-slate-300 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold"
                               />
                             </td>
 
-                            <td className="py-2 px-2">
+                            {/* 7. Unit (Formatted & Clearly Visible) */}
+                            <td className="py-2.5 px-2">
                               <select
-                                value={line.unit || 'PCS'}
+                                value={line.unit || 'KG'}
                                 onChange={(e) => {
                                   const upd = [...lines];
                                   upd[idx].unit = e.target.value;
                                   setLines(upd);
                                 }}
-                                className="w-full px-2 py-1 text-xs text-center font-semibold border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-blue-50/60 dark:bg-slate-800 text-blue-900 dark:text-blue-300"
+                                className="w-full px-2 py-1.5 text-xs text-center font-bold border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-blue-50 dark:bg-slate-800 text-blue-900 dark:text-blue-200"
                               >
                                 {ITEM_UNITS.map((u) => (
                                   <option key={u} value={u}>
@@ -856,11 +1231,12 @@ export default function InvoicesPage() {
                               </select>
                             </td>
 
-                            <td className="py-2 px-2">
+                            {/* 8. Rate (₹) (Formatted & Clearly Visible) */}
+                            <td className="py-2.5 px-2">
                               <input
                                 type="number"
                                 min="0"
-                                step="0.01"
+                                step="any"
                                 required
                                 value={line.rateRupees}
                                 onChange={(e) => {
@@ -868,11 +1244,13 @@ export default function InvoicesPage() {
                                   upd[idx].rateRupees = parseFloat(e.target.value) || 0;
                                   setLines(upd);
                                 }}
-                                className="w-full px-2 py-1 text-xs text-right border border-slate-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                placeholder="0.00"
+                                className="w-full px-2.5 py-1.5 text-xs text-right border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                               />
                             </td>
 
-                            <td className="py-2 px-2">
+                            {/* 9. GST % (Formatted & Clearly Visible) */}
+                            <td className="py-2.5 px-2">
                               <select
                                 value={line.gstRate}
                                 onChange={(e) => {
@@ -880,7 +1258,7 @@ export default function InvoicesPage() {
                                   upd[idx].gstRate = Number(e.target.value);
                                   setLines(upd);
                                 }}
-                                className="w-full px-2 py-1 text-xs text-center border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                className="w-full px-2 py-1.5 text-xs text-center border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
                               >
                                 {GST_RATES.map((rate) => (
                                   <option key={rate} value={rate}>
@@ -890,20 +1268,24 @@ export default function InvoicesPage() {
                               </select>
                             </td>
 
-                            <td className="py-2 px-3 text-right font-mono font-medium text-slate-800 dark:text-slate-200">
-                              ₹ {comp ? (comp.rate * comp.qty / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
+                            {/* 10. Taxable Value */}
+                            <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 dark:text-slate-200">
+                              ₹ {comp ? (comp.taxablePaise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
                             </td>
 
-                            <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                            {/* 11. Line Total */}
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
                               ₹ {comp ? (comp.lineTotal / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
                             </td>
 
-                            <td className="py-2 px-2 text-center">
+                            {/* 12. Delete */}
+                            <td className="py-2.5 px-2 text-center">
                               {lines.length > 1 && (
                                 <button
                                   type="button"
                                   onClick={() => removeLine(idx)}
-                                  className="text-slate-400 hover:text-red-600 transition"
+                                  className="text-slate-400 hover:text-red-600 transition p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40"
+                                  title="Remove line"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -917,17 +1299,43 @@ export default function InvoicesPage() {
                 </div>
               </div>
 
-              {/* Totals */}
-              <div className="flex flex-col sm:flex-row justify-end pt-3">
+              {/* Bottom Summary & Tax Details */}
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pt-2">
+                {/* Tax Treatment Info */}
+                <div className="text-xs text-slate-600 dark:text-slate-400 space-y-1 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 max-w-md w-full">
+                  <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    <span>Kerala Tax Treatment (State 32)</span>
+                  </div>
+                  <p className="text-[11px]">
+                    Place of Supply: <strong>{INDIAN_STATES[placeOfSupply] || 'Kerala'} ({placeOfSupply})</strong>.
+                  </p>
+                  <p className="text-[11px]">
+                    {isInterState
+                      ? 'Inter-State Transaction: IGST 100% applies.'
+                      : 'Intra-State Kerala: CGST 50% + Kerala SGST 50% applies.'}
+                  </p>
+                  {isFixedRate && (
+                    <p className="text-[11px] text-blue-700 dark:text-blue-300 font-medium">
+                      ⚡ Fixed Rate Lot Active: Rate entered is the total lot price directly (e.g. Mankda 250 KG @ ₹1,200 = Total ₹1,200).
+                    </p>
+                  )}
+                </div>
+
+                {/* Totals Summary */}
                 <div className="w-full sm:w-80 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2 font-mono text-xs">
                   <div className="flex justify-between text-slate-600 dark:text-slate-400">
                     <span>Taxable Subtotal:</span>
-                    <span>₹ {(Number(computedSubtotal) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    <span>
+                      ₹ {(Number(computedSubtotal) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </span>
                   </div>
 
                   <div className="flex justify-between text-blue-600 dark:text-blue-400 font-semibold">
                     <span>Total Tax (GST):</span>
-                    <span>₹ {(Number(computedTaxTotal) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    <span>
+                      ₹ {(Number(computedTaxTotal) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </span>
                   </div>
 
                   {Number(roundOff) !== 0 && (
@@ -938,7 +1346,7 @@ export default function InvoicesPage() {
                   )}
 
                   <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between font-bold text-sm text-slate-900 dark:text-slate-100">
-                    <span>Invoice Grand Total:</span>
+                    <span>Daybook Total:</span>
                     <span className="text-blue-600 dark:text-blue-400">
                       ₹ {(Number(finalTotal) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </span>
@@ -950,7 +1358,7 @@ export default function InvoicesPage() {
               <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5 text-blue-500" />
-                  <span>Draft = Editable later | Save & Lock = Immutable posted entry</span>
+                  <span>Draft = Editable later | Save & Lock = Immutable posted ledger entries</span>
                 </div>
 
                 <div className="flex items-center space-x-2.5">
