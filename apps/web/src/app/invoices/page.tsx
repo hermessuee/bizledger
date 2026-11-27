@@ -134,11 +134,17 @@ export default function InvoicesPage() {
   const handleToggleFixedRate = (checked: boolean) => {
     setIsFixedRate(checked);
     if (checked) {
-      const updated = lines.map((l) => ({
-        ...l,
-        gstRate: 0,
-        unit: l.unit || 'KG',
-      }));
+      // In fixed rate lot mode, GST defaults to 0%
+      // and selected customer name automatically populates the item description (still manually editable)
+      const updated = lines.map((l) => {
+        const p = parties.find((cust) => cust.id === l.partyId);
+        return {
+          ...l,
+          gstRate: 0,
+          unit: l.unit || 'KG',
+          description: p ? p.name : l.description,
+        };
+      });
       setLines(updated);
     }
   };
@@ -148,10 +154,15 @@ export default function InvoicesPage() {
     setAutoFillParty(checked);
     if (checked && lines.length > 1 && lines[0]?.partyId) {
       const row0Party = lines[0].partyId;
+      const pObj = parties.find((c) => c.id === row0Party);
       const updated = lines.map((l, i) => {
         if (i === 0) return l;
         if (!l.partyId) {
-          return { ...l, partyId: row0Party };
+          return {
+            ...l,
+            partyId: row0Party,
+            description: isFixedRate && pObj ? pObj.name : l.description,
+          };
         }
         return l;
       });
@@ -178,10 +189,12 @@ export default function InvoicesPage() {
   // Party select per row
   const handleRowPartySelect = (idx: number, pId: string) => {
     const oldRow0Party = lines[0]?.partyId;
+    const selectedParty = parties.find((c) => c.id === pId);
     const updated = [...lines];
     updated[idx] = {
       ...updated[idx],
       partyId: pId,
+      description: isFixedRate && selectedParty ? selectedParty.name : updated[idx].description,
     };
 
     if (idx === 0 && autoFillParty) {
@@ -190,6 +203,7 @@ export default function InvoicesPage() {
           updated[i] = {
             ...updated[i],
             partyId: pId,
+            description: isFixedRate && selectedParty ? selectedParty.name : updated[i].description,
           };
         }
       }
@@ -243,6 +257,7 @@ export default function InvoicesPage() {
     const row0 = lines[0];
     const newPartyId = autoFillParty && row0?.partyId ? row0.partyId : '';
     const newDate = autoFillDate && row0?.docDate ? row0.docDate : todayDate;
+    const newParty = parties.find((c) => c.id === newPartyId);
 
     setLines([
       ...lines,
@@ -251,7 +266,7 @@ export default function InvoicesPage() {
         docNo: '',
         docDate: newDate,
         itemId: '',
-        description: '',
+        description: isFixedRate && newParty ? newParty.name : '',
         hsnSac: '',
         unit: 'KG',
         qty: 1,

@@ -133,11 +133,16 @@ export default function BillsPage() {
     setIsFixedRate(checked);
     if (checked) {
       // In fixed rate lot mode, GST defaults to 0% for raw produce
-      const updated = lines.map((l) => ({
-        ...l,
-        gstRate: 0,
-        unit: l.unit || 'KG',
-      }));
+      // and selected vendor name automatically populates the item description (still manually editable)
+      const updated = lines.map((l) => {
+        const v = vendors.find((vend) => vend.id === l.vendorId);
+        return {
+          ...l,
+          gstRate: 0,
+          unit: l.unit || 'KG',
+          description: v ? v.name : l.description,
+        };
+      });
       setLines(updated);
     }
   };
@@ -147,10 +152,15 @@ export default function BillsPage() {
     setAutoFillVendor(checked);
     if (checked && lines.length > 1 && lines[0]?.vendorId) {
       const row0Vendor = lines[0].vendorId;
+      const vObj = vendors.find((v) => v.id === row0Vendor);
       const updated = lines.map((l, i) => {
         if (i === 0) return l;
         if (!l.vendorId) {
-          return { ...l, vendorId: row0Vendor };
+          return {
+            ...l,
+            vendorId: row0Vendor,
+            description: isFixedRate && vObj ? vObj.name : l.description,
+          };
         }
         return l;
       });
@@ -177,10 +187,12 @@ export default function BillsPage() {
   // Vendor selection per row
   const handleRowVendorSelect = (idx: number, vId: string) => {
     const oldRow0Vendor = lines[0]?.vendorId;
+    const selectedVendor = vendors.find((v) => v.id === vId);
     const updated = [...lines];
     updated[idx] = {
       ...updated[idx],
       vendorId: vId,
+      description: isFixedRate && selectedVendor ? selectedVendor.name : updated[idx].description,
     };
 
     // If changing row 0 and auto-fill is active, cascade to rows matching old row 0 or empty
@@ -190,6 +202,7 @@ export default function BillsPage() {
           updated[i] = {
             ...updated[i],
             vendorId: vId,
+            description: isFixedRate && selectedVendor ? selectedVendor.name : updated[i].description,
           };
         }
       }
@@ -243,6 +256,7 @@ export default function BillsPage() {
     const row0 = lines[0];
     const newVendorId = autoFillVendor && row0?.vendorId ? row0.vendorId : '';
     const newDate = autoFillDate && row0?.docDate ? row0.docDate : todayDate;
+    const newVendor = vendors.find((v) => v.id === newVendorId);
 
     setLines([
       ...lines,
@@ -251,7 +265,7 @@ export default function BillsPage() {
         supplierBillNo: '',
         docDate: newDate,
         itemId: '',
-        description: '',
+        description: isFixedRate && newVendor ? newVendor.name : '',
         hsnSac: '',
         unit: 'KG',
         qty: 1,
