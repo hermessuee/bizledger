@@ -311,4 +311,179 @@ reports.get('/gst-summary', requirePermission('gst', 'view'), (c) => {
   });
 });
 
+// GET /reports/detailed-trading - Itemized Daybook & Detailed Trading Entries (Purchases & Sales)
+reports.get('/detailed-trading', requirePermission('reports', 'view'), async (c) => {
+  const businessId = c.get('businessId');
+  const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
+  const queryBiz = c.req.query('businessId');
+  const fromDate = c.req.query('fromDate');
+  const toDate = c.req.query('toDate');
+  const docTypeFilter = c.req.query('type'); // 'all' | 'purchases' | 'sales'
+
+  const targetBizId = isSuperAdmin && queryBiz ? queryBiz : businessId;
+  const isAll = isSuperAdmin && (!targetBizId || targetBizId === 'all' || targetBizId === '00000000-0000-0000-0000-000000000000');
+
+  // Hydrate or sync from Neon PostgreSQL if necessary
+  await memoryStore.syncIfNeeded();
+
+  const distBiz = isAll
+    ? null
+    : memoryStore.businesses.find((b) => b.id === targetBizId) || memoryStore.businesses[0];
+
+  let docs = memoryStore.documents.filter((d) => d.status !== 'void');
+
+  if (!isAll) {
+    docs = docs.filter((d) => d.businessId === targetBizId);
+  }
+
+  if (fromDate) {
+    docs = docs.filter((d) => d.docDate >= fromDate);
+  }
+  if (toDate) {
+    docs = docs.filter((d) => d.docDate <= toDate);
+  }
+
+  if (docTypeFilter === 'purchases') {
+    docs = docs.filter((d) => d.docType === 'purchase_bill');
+  } else if (docTypeFilter === 'sales') {
+    docs = docs.filter((d) => d.docType === 'sales_invoice');
+  }
+
+  // Sort chronologically by date then document number
+  docs.sort((a, b) => a.docDate.localeCompare(b.docDate) || a.docNo.localeCompare(b.docNo));
+
+  const entries: any[] = [];
+  let totalPurchasesDebit = 0;
+  let totalSalesCredit = 0;
+  let totalTax = 0;
+  let totalQty = 0;
+  let runningBalance = 0;
+
+  for (const doc of docs) {
+    const party = memoryStore.parties.find((p) => p.id === doc.partyId);
+    const docDist = memoryStore.businesses.find((b) => b.id === doc.businessId);
+    const isPurchase = doc.docType === 'purchase_bill';
+
+    if (Array.isArray(doc.lines) && doc.lines.length > 0) {
+      for (const line of doc.lines) {
+        const item = line.itemId ? memoryStore.items.find((i) => i.id === line.itemId) : null;
+        const lineTax = (line.cgst || 0) + (line.sgst || 0) + (line.igst || 0);
+        const debit = isPurchase ? line.lineTotal : 0;
+        const credit = !isPurchase ? line.lineTotal : 0;
+        const unit = (line as any).unit || item?.unit || 'KG';
+
+        totalPurchasesDebit += debit;
+        totalSalesCredit += credit;
+        totalTax += lineTax;
+        totalQty += (line.qty || 0);
+
+        // Credit (Sales) increases balance; Debit (Purchases) decreases balance
+        runningBalance += (credit - debit);
+
+        entries.push({
+          id: `${doc.id}-${line.id}`,
+          docId: doc.id,
+          docNo: doc.docNo,
+          docDate: doc.docDate,
+          dueDate: doc.dueDate || null,
+          docType: doc.docType,
+          typeLabel: isPurchase ? 'Purchase Bill' : 'Sales Invoice',
+          category: isPurchase ? 'Purchase' : 'Sale',
+          status: doc.status,
+          businessId: doc.businessId,
+          distributorName: docDist?.name || 'Distributor',
+          distributorGstin: docDist?.gstin || '',
+          partyId: doc.partyId,
+          partyName: party?.name || 'Unknown Party',
+          partyGstin: party?.gstin || '-',
+          placeOfSupply: doc.placeOfSupply,
+          itemId: line.itemId || null,
+          description: line.description || (isPurchase ? 'Purchased Goods' : 'Sales Goods'),
+          hsnSac: line.hsnSac || item?.hsnSac || '-',
+          qty: line.qty || 0,
+          unit,
+          rate: line.rate || 0,
+          gstRate: line.gstRate || 0,
+          taxAmount: lineTax,
+          taxableAmount: line.lineTotal - lineTax,
+          lineTotal: line.lineTotal,
+          debit,
+          credit,
+          runningBalance,
+        });
+      }
+    } else {
+      // Fallback for doc without detailed lines
+      const debit = isPurchase ? doc.total : 0;
+      const credit = !isPurchase ? doc.total : 0;
+      totalPurchasesDebit += debit;
+      totalSalesCredit += credit;
+      totalTax += doc.taxTotal || 0;
+      runningBalance += (credit - debit);
+
+      entries.push({
+        id: doc.id,
+        docId: doc.id,
+        docNo: doc.docNo,
+        docDate: doc.docDate,
+        dueDate: doc.dueDate || null,
+        docType: doc.docType,
+        typeLabel: isPurchase ? 'Purchase Bill' : 'Sales Invoice',
+        category: isPurchase ? 'Purchase' : 'Sale',
+        status: doc.status,
+        businessId: doc.businessId,
+        distributorName: docDist?.name || 'Distributor',
+        distributorGstin: docDist?.gstin || '',
+        partyId: doc.partyId,
+        partyName: party?.name || 'Unknown Party',
+        partyGstin: party?.gstin || '-',
+        placeOfSupply: doc.placeOfSupply,
+        itemId: null,
+        description: isPurchase ? 'Purchased Goods & Services' : 'Sales Invoiced Goods',
+        hsnSac: '-',
+        qty: 1,
+        unit: 'LOT',
+        rate: doc.subtotal,
+        gstRate: 0,
+        taxAmount: doc.taxTotal || 0,
+        taxableAmount: doc.subtotal,
+        lineTotal: doc.total,
+        debit,
+        credit,
+        runningBalance,
+      });
+    }
+  }
+
+  const netProfit = totalSalesCredit - totalPurchasesDebit;
+
+  return c.json({
+    distributor: {
+      id: distBiz?.id || 'all',
+      name: isAll ? 'All Distributors Master Consolidation' : (distBiz?.name || 'Distributor Firm'),
+      gstin: distBiz?.gstin || '',
+      address: distBiz?.address || '',
+      stateCode: distBiz?.stateCode || '32',
+      isAll,
+    },
+    businesses: isSuperAdmin ? memoryStore.businesses.map(b => ({ id: b.id, name: b.name, gstin: b.gstin })) : [],
+    filters: {
+      fromDate: fromDate || '',
+      toDate: toDate || '',
+      type: docTypeFilter || 'all',
+      businessId: targetBizId,
+    },
+    summary: {
+      totalPurchasesDebit,
+      totalSalesCredit,
+      netProfit,
+      totalTax,
+      totalQty,
+      totalEntries: entries.length,
+    },
+    entries,
+  });
+});
+
 export { reports as reportRoutes };

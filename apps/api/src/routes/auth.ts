@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { loginSchema, refreshTokenSchema, changePasswordSchema } from '@bizledger/shared';
+import { loginSchema, refreshTokenSchema, changePasswordSchema, MENU_KEYS } from '@bizledger/shared';
 import { AppContext } from '../types';
 import { hashPassword, verifyPassword, generateRandomHex } from '../crypto';
 import { signJwt } from '../jwt';
@@ -115,7 +115,7 @@ auth.post('/login', async (c) => {
           currency: 'INR',
           fyStartMonth: 4,
           status: 'active' as const,
-          enabledMenus: memoryStore.menus,
+          enabledMenus: [...MENU_KEYS],
           createdAt: new Date().toISOString(),
         }
       : memoryStore.businesses.find((b) => b.id === user.businessId) || memoryStore.business;
@@ -291,7 +291,7 @@ auth.get('/me', (c) => {
           currency: 'INR',
           fyStartMonth: 4,
           status: 'active' as const,
-          enabledMenus: memoryStore.menus,
+          enabledMenus: [...MENU_KEYS],
           createdAt: new Date().toISOString(),
         }
       : memoryStore.businesses.find((b) => b.id === user.businessId) || memoryStore.business;
