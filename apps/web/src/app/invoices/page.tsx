@@ -42,8 +42,8 @@ interface SalesInvoiceLine {
   description: string;
   hsnSac: string;
   unit: string;
-  qty: number;
-  rateRupees: number;
+  qty: number | string;
+  rateRupees: number | string;
   gstRate: number;
 }
 
@@ -75,7 +75,7 @@ export default function InvoicesPage() {
   const [autoFillParty, setAutoFillParty] = useState(true);
   const [autoFillDate, setAutoFillDate] = useState(true);
 
-  // Daybook Line items
+  // Daybook Line items (default values for Qty and Rate removed as requested)
   const [lines, setLines] = useState<SalesInvoiceLine[]>([
     {
       partyId: '',
@@ -84,8 +84,8 @@ export default function InvoicesPage() {
       description: '',
       hsnSac: '',
       unit: 'KG',
-      qty: 1,
-      rateRupees: 0,
+      qty: '',
+      rateRupees: '',
       gstRate: 0,
     },
   ]);
@@ -95,7 +95,7 @@ export default function InvoicesPage() {
       setLoading(true);
       const data = await api.get('/api/v1/documents?type=sales_invoice');
       setInvoices(data.documents || []);
-    } catch {}
+    } catch { }
     finally {
       setLoading(false);
     }
@@ -120,9 +120,9 @@ export default function InvoicesPage() {
           if (list.length > 0 && !targetBusinessId) {
             setTargetBusinessId(list[0].id);
           }
-        } catch {}
+        } catch { }
       }
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
@@ -269,8 +269,8 @@ export default function InvoicesPage() {
         description: isFixedRate && newParty ? newParty.name : '',
         hsnSac: '',
         unit: 'KG',
-        qty: 1,
-        rateRupees: 0,
+        qty: '',
+        rateRupees: '',
         gstRate: isFixedRate ? 0 : 0,
       },
     ]);
@@ -343,8 +343,8 @@ export default function InvoicesPage() {
         description: '',
         hsnSac: '',
         unit: 'KG',
-        qty: 1,
-        rateRupees: 0,
+        qty: '',
+        rateRupees: '',
         gstRate: 0,
       },
     ]);
@@ -415,6 +415,15 @@ export default function InvoicesPage() {
     const missingDescIdx = lines.findIndex((l) => !l.description || !l.description.trim());
     if (missingDescIdx !== -1) {
       setErrorMsg(`Row ${missingDescIdx + 1}: Please enter item name or description.`);
+      return;
+    }
+
+    const missingQtyIdx = lines.findIndex((l) => {
+      const q = Number(l.qty);
+      return !q || q <= 0 || isNaN(q);
+    });
+    if (missingQtyIdx !== -1) {
+      setErrorMsg(`Row ${missingQtyIdx + 1}: Please enter a valid Quantity.`);
       return;
     }
 
@@ -861,7 +870,7 @@ export default function InvoicesPage() {
           style={{ zIndex: 100, pointerEvents: 'auto' }}
         >
           <div
-            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-[96vw] xl:max-w-7xl w-full max-h-[94vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 relative z-[101]"
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-[98vw] 2xl:max-w-[1560px] w-full max-h-[95vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 relative z-[101]"
             style={{ zIndex: 101 }}
           >
             {/* Header */}
@@ -996,11 +1005,10 @@ export default function InvoicesPage() {
 
                   {/* Fixed Rate Checkbox on LEFT of Add Line Item */}
                   <label
-                    className={`inline-flex items-center gap-2 cursor-pointer px-3 py-1 rounded-xl border text-xs font-bold transition select-none shadow-xs ${
-                      isFixedRate
-                        ? 'bg-blue-100 text-blue-900 border-blue-400 dark:bg-blue-900/60 dark:text-blue-200 dark:border-blue-700'
-                        : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-                    }`}
+                    className={`inline-flex items-center gap-2 cursor-pointer px-3 py-1 rounded-xl border text-xs font-bold transition select-none shadow-xs ${isFixedRate
+                      ? 'bg-blue-100 text-blue-900 border-blue-400 dark:bg-blue-900/60 dark:text-blue-200 dark:border-blue-700'
+                      : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                      }`}
                     title="Fixed Rate mode: Rate entered is the line total directly (e.g. Mankda 250 KG @ ₹1200 => Total ₹1200, 0% GST)"
                   >
                     <input
@@ -1026,11 +1034,11 @@ export default function InvoicesPage() {
               {/* Daybook Single Entry Grid (Clean & Formatted with ample column widths) */}
               <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-xs">
                 <div className="overflow-x-auto max-h-[50vh]">
-                  <table className="w-full text-left text-xs min-w-[1240px]">
-                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
+                  <table className="w-full text-left text-xs min-w-[1100px]">
+                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10 text-[11px]">
                       <tr>
                         {/* 1. Customer / Party (with Auto-Fill Checkbox) */}
-                        <th className="py-2.5 px-3 min-w-[210px] w-56">
+                        <th className="py-2 px-2.5 min-w-[170px] w-48">
                           <div className="flex items-center justify-between gap-1">
                             <span className="font-bold">Customer / Party *</span>
                             <label
@@ -1043,18 +1051,18 @@ export default function InvoicesPage() {
                                 onChange={(e) => handleToggleAutoFillParty(e.target.checked)}
                                 className="w-3 h-3 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600"
                               />
-                              <span>Auto-fill</span>
+                              <span>Auto</span>
                             </label>
                           </div>
                         </th>
 
                         {/* 2. Invoice # */}
-                        <th className="py-2.5 px-2 w-32">
+                        <th className="py-2 px-1.5 w-24 min-w-[90px]">
                           <span>Invoice #</span>
                         </th>
 
                         {/* 3. Invoice Date (with Auto-Fill Checkbox) */}
-                        <th className="py-2.5 px-2 w-36">
+                        <th className="py-2 px-1.5 w-32 min-w-[125px]">
                           <div className="flex items-center justify-between gap-1">
                             <span className="font-bold">Invoice Date *</span>
                             <label
@@ -1067,27 +1075,27 @@ export default function InvoicesPage() {
                                 onChange={(e) => handleToggleAutoFillDate(e.target.checked)}
                                 className="w-3 h-3 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600"
                               />
-                              <span>Auto-fill</span>
+                              <span>Auto</span>
                             </label>
                           </div>
                         </th>
 
                         {/* 4. Item / Description */}
-                        <th className="py-2.5 px-3 min-w-[240px]">
+                        <th className="py-2 px-2 min-w-[190px]">
                           <span className="font-bold">Item / Description *</span>
                         </th>
 
                         {/* 5. HSN/SAC */}
-                        <th className="py-2.5 px-2 w-24">HSN/SAC</th>
+                        <th className="py-2 px-1 w-16 min-w-[65px] text-center">HSN/SAC</th>
 
                         {/* 6. Qty */}
-                        <th className="py-2.5 px-2 w-24 text-center font-bold">Qty</th>
+                        <th className="py-2 px-1 w-24 min-w-[85px] text-center font-bold">Qty *</th>
 
                         {/* 7. Unit */}
-                        <th className="py-2.5 px-2 w-24 text-center font-bold">Unit</th>
+                        <th className="py-2 px-1 w-20 min-w-[70px] text-center font-bold">Unit</th>
 
                         {/* 8. Rate */}
-                        <th className="py-2.5 px-2 w-32 text-right">
+                        <th className="py-2 px-1.5 w-28 min-w-[100px] text-right">
                           <span className="font-bold">Rate (₹)</span>
                           {isFixedRate && (
                             <span className="block text-[9px] text-blue-600 dark:text-blue-400 font-bold">
@@ -1097,16 +1105,16 @@ export default function InvoicesPage() {
                         </th>
 
                         {/* 9. GST % */}
-                        <th className="py-2.5 px-2 w-24 text-center font-bold">GST %</th>
+                        <th className="py-2 px-1 w-20 min-w-[70px] text-center font-bold">GST %</th>
 
                         {/* 10. Taxable */}
-                        <th className="py-2.5 px-3 text-right w-28">Taxable</th>
+                        <th className="py-2 px-2 text-right w-24 min-w-[85px]">Taxable</th>
 
                         {/* 11. Total */}
-                        <th className="py-2.5 px-3 text-right w-32 font-bold">Total (₹)</th>
+                        <th className="py-2 px-2 text-right w-28 min-w-[95px] font-bold">Total (₹)</th>
 
                         {/* 12. Action */}
-                        <th className="py-2.5 px-2 w-12 text-center"></th>
+                        <th className="py-2 px-1 w-9 text-center"></th>
                       </tr>
                     </thead>
 
@@ -1119,12 +1127,12 @@ export default function InvoicesPage() {
                             className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
                           >
                             {/* 1. Customer Dropdown */}
-                            <td className="py-2.5 px-3">
+                            <td className="py-2 px-2.5">
                               <select
                                 required
                                 value={line.partyId}
                                 onChange={(e) => handleRowPartySelect(idx, e.target.value)}
-                                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400 font-medium"
+                                className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400 font-medium"
                               >
                                 <option value="">-- Select Customer * --</option>
                                 {parties.map((p) => (
@@ -1136,7 +1144,7 @@ export default function InvoicesPage() {
                             </td>
 
                             {/* 2. Invoice # */}
-                            <td className="py-2.5 px-2">
+                            <td className="py-2 px-1.5">
                               <input
                                 type="text"
                                 placeholder="Auto if blank"
@@ -1146,23 +1154,23 @@ export default function InvoicesPage() {
                                   upd[idx].docNo = e.target.value;
                                   setLines(upd);
                                 }}
-                                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                className="w-full px-2 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                               />
                             </td>
 
                             {/* 3. Invoice Date */}
-                            <td className="py-2.5 px-2">
+                            <td className="py-2 px-1.5">
                               <input
                                 type="date"
                                 required
                                 value={line.docDate}
                                 onChange={(e) => handleRowDateChange(idx, e.target.value)}
-                                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                className="w-full px-1.5 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono"
                               />
                             </td>
 
                             {/* 4. Item / Description */}
-                            <td className="py-2.5 px-3">
+                            <td className="py-2 px-2">
                               <div className="space-y-1">
                                 {items.length > 0 && (
                                   <select
@@ -1190,13 +1198,13 @@ export default function InvoicesPage() {
                                     upd[idx].description = e.target.value;
                                     setLines(upd);
                                   }}
-                                  className="w-full px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
+                                  className="w-full px-2 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
                                 />
                               </div>
                             </td>
 
                             {/* 5. HSN/SAC */}
-                            <td className="py-2.5 px-2">
+                            <td className="py-2 px-1">
                               <input
                                 type="text"
                                 placeholder="HSN"
@@ -1206,29 +1214,30 @@ export default function InvoicesPage() {
                                   upd[idx].hsnSac = e.target.value;
                                   setLines(upd);
                                 }}
-                                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                className="w-full px-1 py-1.5 text-xs text-center border border-slate-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                               />
                             </td>
 
-                            {/* 6. Qty (Formatted & Clearly Visible) */}
-                            <td className="py-2.5 px-2">
+                            {/* 6. Qty (Formatted, Clear & No Spinners Cutting Off Digits) */}
+                            <td className="py-2 px-1">
                               <input
                                 type="number"
-                                min="0.01"
+                                min="0.001"
                                 step="any"
                                 required
+                                placeholder="Qty"
                                 value={line.qty}
                                 onChange={(e) => {
                                   const upd = [...lines];
-                                  upd[idx].qty = parseFloat(e.target.value) || 0;
+                                  upd[idx].qty = e.target.value === '' ? '' : (parseFloat(e.target.value) || 0);
                                   setLines(upd);
                                 }}
-                                className="w-full px-2 py-1.5 text-xs text-center border border-slate-300 dark:border-slate-700 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold"
+                                className="w-full px-1.5 py-1.5 text-xs text-center border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               />
                             </td>
 
-                            {/* 7. Unit (Formatted & Clearly Visible) */}
-                            <td className="py-2.5 px-2">
+                            {/* 7. Unit */}
+                            <td className="py-2 px-1">
                               <select
                                 value={line.unit || 'KG'}
                                 onChange={(e) => {
@@ -1236,7 +1245,7 @@ export default function InvoicesPage() {
                                   upd[idx].unit = e.target.value;
                                   setLines(upd);
                                 }}
-                                className="w-full px-2 py-1.5 text-xs text-center font-bold border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-blue-50 dark:bg-slate-800 text-blue-900 dark:text-blue-200"
+                                className="w-full px-1 py-1.5 text-xs text-center font-bold border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-blue-50 dark:bg-slate-800 text-blue-900 dark:text-blue-200 cursor-pointer"
                               >
                                 {ITEM_UNITS.map((u) => (
                                   <option key={u} value={u}>
@@ -1246,8 +1255,8 @@ export default function InvoicesPage() {
                               </select>
                             </td>
 
-                            {/* 8. Rate (₹) (Formatted & Clearly Visible) */}
-                            <td className="py-2.5 px-2">
+                            {/* 8. Rate (₹) (Clean & No Spinners Cutting Off Digits) */}
+                            <td className="py-2 px-1.5">
                               <input
                                 type="number"
                                 min="0"
@@ -1256,16 +1265,16 @@ export default function InvoicesPage() {
                                 value={line.rateRupees}
                                 onChange={(e) => {
                                   const upd = [...lines];
-                                  upd[idx].rateRupees = parseFloat(e.target.value) || 0;
+                                  upd[idx].rateRupees = e.target.value === '' ? '' : (parseFloat(e.target.value) || 0);
                                   setLines(upd);
                                 }}
                                 placeholder="0.00"
-                                className="w-full px-2.5 py-1.5 text-xs text-right border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                className="w-full px-2 py-1.5 text-xs text-right border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               />
                             </td>
 
-                            {/* 9. GST % (Formatted & Clearly Visible) */}
-                            <td className="py-2.5 px-2">
+                            {/* 9. GST % */}
+                            <td className="py-2 px-1">
                               <select
                                 value={line.gstRate}
                                 onChange={(e) => {
@@ -1273,7 +1282,7 @@ export default function InvoicesPage() {
                                   upd[idx].gstRate = Number(e.target.value);
                                   setLines(upd);
                                 }}
-                                className="w-full px-2 py-1.5 text-xs text-center border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                                className="w-full px-1 py-1.5 text-xs text-center border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold cursor-pointer"
                               >
                                 {GST_RATES.map((rate) => (
                                   <option key={rate} value={rate}>
@@ -1284,17 +1293,17 @@ export default function InvoicesPage() {
                             </td>
 
                             {/* 10. Taxable Value */}
-                            <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 dark:text-slate-200">
+                            <td className="py-2 px-2 text-right font-mono font-semibold text-slate-800 dark:text-slate-200 text-xs whitespace-nowrap">
                               ₹ {comp ? (comp.taxablePaise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
                             </td>
 
                             {/* 11. Line Total */}
-                            <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                            <td className="py-2 px-2 text-right font-mono font-bold text-slate-900 dark:text-slate-100 text-xs whitespace-nowrap">
                               ₹ {comp ? (comp.lineTotal / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
                             </td>
 
                             {/* 12. Delete */}
-                            <td className="py-2.5 px-2 text-center">
+                            <td className="py-2 px-1 text-center">
                               {lines.length > 1 && (
                                 <button
                                   type="button"
