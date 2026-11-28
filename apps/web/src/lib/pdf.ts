@@ -538,3 +538,686 @@ export function downloadDetailedTradingPdf(data: DetailedTradingPdfData) {
   const safeTo = (filters.toDate || 'end').replace(/-/g, '');
   doc.save(`Detailed_Trading_Report_${safeDistName}_${safeFrom}_to_${safeTo}.pdf`);
 }
+
+// ---------------------------------------------------------------------------
+// 5. PROFIT & LOSS STATEMENT PDF EXPORT
+// ---------------------------------------------------------------------------
+export interface PnlPdfData {
+  business: {
+    name: string;
+    gstin?: string;
+    address?: string;
+    stateCode?: string;
+  };
+  pnl: {
+    incomeRows: Array<{ id: string; name: string; amount: number }>;
+    expenseRows: Array<{ id: string; name: string; amount: number }>;
+    totalIncome: number;
+    totalExpense: number;
+    netProfit: number;
+  };
+}
+
+export function downloadPnlPdf(data: PnlPdfData) {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
+  const { business, pnl } = data;
+
+  // Header Banner (Slate-900)
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, 595, 68, 'F');
+
+  // Business Name
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(15);
+  doc.setFont('helvetica', 'bold');
+  const bizName = (business.name || 'DISTRIBUTOR FIRM').toUpperCase();
+  doc.text(bizName, 25, 28);
+
+  // Address & GSTIN
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(226, 232, 240);
+  const bizInfo = `GSTIN: ${business.gstin || 'Unregistered'} | State: ${business.stateCode || '32'} - Kerala | Address: ${business.address || 'Kerala'}`;
+  doc.text(bizInfo.substring(0, 80), 25, 45);
+
+  // Report Title
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('PROFIT & LOSS STATEMENT', 380, 28);
+
+  // Subtitle / Date
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(226, 232, 240);
+  const todayStr = new Date().toLocaleDateString('en-GB');
+  doc.text(`Financial Summary | As on ${todayStr}`, 380, 45);
+
+  // KPI Summary Cards
+  const cardY = 78;
+  const cardH = 46;
+
+  // Card 1: Total Revenue (Emerald)
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(1);
+  doc.roundedRect(25, cardY, 170, cardH, 3, 3, 'FD');
+  doc.setFillColor(16, 185, 129); // emerald-500
+  doc.rect(25, cardY, 170, 3, 'F');
+  doc.setTextColor(71, 85, 105);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TOTAL REVENUE / INCOME', 35, cardY + 16);
+  doc.setTextColor(5, 150, 105);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Rs. ${formatPaise(pnl.totalIncome)}`, 35, cardY + 35);
+
+  // Card 2: Total Expenses (Red)
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(212, cardY, 170, cardH, 3, 3, 'FD');
+  doc.setFillColor(239, 68, 68); // red-500
+  doc.rect(212, cardY, 170, 3, 'F');
+  doc.setTextColor(71, 85, 105);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TOTAL EXPENSES & PURCHASES', 222, cardY + 16);
+  doc.setTextColor(220, 38, 38);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Rs. ${formatPaise(pnl.totalExpense)}`, 222, cardY + 35);
+
+  // Card 3: Net Profit (Blue / Violet)
+  const isProfit = pnl.netProfit >= 0;
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(400, cardY, 170, cardH, 3, 3, 'FD');
+  doc.setFillColor(isProfit ? 37 : 220, isProfit ? 99 : 38, isProfit ? 235 : 38);
+  doc.rect(400, cardY, 170, 3, 'F');
+  doc.setTextColor(71, 85, 105);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text(isProfit ? 'NET TRADING PROFIT' : 'NET DEFICIT (LOSS)', 410, cardY + 16);
+  doc.setTextColor(isProfit ? 29 : 185, isProfit ? 78 : 28, isProfit ? 216 : 28);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Rs. ${formatPaise(Math.abs(pnl.netProfit))}${!isProfit ? ' (Loss)' : ''}`, 410, cardY + 35);
+
+  // Table 1: Revenue / Income Breakdown
+  const incomeRows = pnl.incomeRows.map((r, idx) => [
+    idx + 1,
+    r.name,
+    formatPaise(r.amount),
+  ]);
+
+  autoTable(doc, {
+    startY: cardY + cardH + 12,
+    head: [['#', 'Income / Revenue Account', 'Amount (INR)']],
+    body: incomeRows.length > 0 ? incomeRows : [['-', 'No revenue entries recorded', '0.00']],
+    theme: 'grid',
+    styles: {
+      fontSize: 8,
+      cellPadding: 4.5,
+      textColor: [15, 23, 42],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.5,
+    },
+    headStyles: {
+      fillColor: [5, 150, 105], // emerald-600
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8.5,
+    },
+    columnStyles: {
+      0: { cellWidth: 30, halign: 'center' },
+      1: { cellWidth: 380, halign: 'left' },
+      2: { cellWidth: 135, halign: 'right', fontStyle: 'bold' },
+    },
+    foot: [
+      [
+        { content: 'TOTAL INCOME / REVENUE', colSpan: 2, styles: { halign: 'right', fontStyle: 'bold', fillColor: [209, 250, 229] } },
+        { content: `Rs. ${formatPaise(pnl.totalIncome)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: [5, 150, 105], fillColor: [209, 250, 229] } },
+      ],
+    ],
+    margin: { left: 25, right: 25 },
+  });
+
+  const afterIncomeY = (doc as any).lastAutoTable?.finalY || 240;
+
+  // Table 2: Expenses & Purchases Breakdown
+  const expenseRows = pnl.expenseRows.map((r, idx) => [
+    idx + 1,
+    r.name,
+    formatPaise(r.amount),
+  ]);
+
+  autoTable(doc, {
+    startY: afterIncomeY + 12,
+    head: [['#', 'Expenses & Purchases Account', 'Amount (INR)']],
+    body: expenseRows.length > 0 ? expenseRows : [['-', 'No expense entries recorded', '0.00']],
+    theme: 'grid',
+    styles: {
+      fontSize: 8,
+      cellPadding: 4.5,
+      textColor: [15, 23, 42],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.5,
+    },
+    headStyles: {
+      fillColor: [220, 38, 38], // red-600
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8.5,
+    },
+    columnStyles: {
+      0: { cellWidth: 30, halign: 'center' },
+      1: { cellWidth: 380, halign: 'left' },
+      2: { cellWidth: 135, halign: 'right', fontStyle: 'bold' },
+    },
+    foot: [
+      [
+        { content: 'TOTAL EXPENSES & PURCHASES', colSpan: 2, styles: { halign: 'right', fontStyle: 'bold', fillColor: [254, 226, 226] } },
+        { content: `Rs. ${formatPaise(pnl.totalExpense)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: [220, 38, 38], fillColor: [254, 226, 226] } },
+      ],
+    ],
+    margin: { left: 25, right: 25 },
+  });
+
+  const finalY = (doc as any).lastAutoTable?.finalY || 380;
+
+  // Bottom Net Profit Summary Box
+  doc.setFillColor(isProfit ? 238 : 254, isProfit ? 242 : 242, isProfit ? 255 : 242);
+  doc.setDrawColor(isProfit ? 199 : 254, isProfit ? 210 : 202, isProfit ? 254 : 202);
+  doc.roundedRect(25, finalY + 14, 545, 36, 4, 4, 'FD');
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(isProfit ? 30 : 185, isProfit ? 58 : 28, isProfit ? 138 : 28);
+  doc.text('NET PROFIT / (LOSS) FOR THE FINANCIAL PERIOD:', 40, finalY + 36);
+
+  doc.setFontSize(14);
+  doc.text(`Rs. ${formatPaise(pnl.netProfit)}`, 550, finalY + 36, { align: 'right' });
+
+  const safeBiz = (business.name || 'Distributor').replace(/[^a-zA-Z0-9]/g, '_');
+  doc.save(`Profit_and_Loss_Report_${safeBiz}_${todayStr.replace(/\//g, '')}.pdf`);
+}
+
+// ---------------------------------------------------------------------------
+// 6. TRIAL BALANCE PDF EXPORT
+// ---------------------------------------------------------------------------
+export interface TrialBalancePdfData {
+  business: {
+    name: string;
+    gstin?: string;
+    address?: string;
+    stateCode?: string;
+  };
+  tb: {
+    rows: Array<{ id: string; code: string; name: string; type: string; closingDebit: number; closingCredit: number }>;
+    totalDebit: number;
+    totalCredit: number;
+    isBalanced: boolean;
+  };
+}
+
+export function downloadTrialBalancePdf(data: TrialBalancePdfData) {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
+  const { business, tb } = data;
+
+  // Header Banner
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, 595, 68, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(15);
+  doc.setFont('helvetica', 'bold');
+  const bizName = (business.name || 'DISTRIBUTOR FIRM').toUpperCase();
+  doc.text(bizName, 25, 28);
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(226, 232, 240);
+  const bizInfo = `GSTIN: ${business.gstin || 'Unregistered'} | State: ${business.stateCode || '32'} - Kerala | Address: ${business.address || 'Kerala'}`;
+  doc.text(bizInfo.substring(0, 80), 25, 45);
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TRIAL BALANCE', 440, 28);
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(226, 232, 240);
+  const todayStr = new Date().toLocaleDateString('en-GB');
+  doc.text(`As on ${todayStr}`, 440, 45);
+
+  // Status Badge (Balanced / Unbalanced)
+  const badgeY = 78;
+  doc.setFillColor(tb.isBalanced ? 240 : 254, tb.isBalanced ? 253 : 242, tb.isBalanced ? 244 : 242);
+  doc.setDrawColor(tb.isBalanced ? 187 : 254, tb.isBalanced ? 247 : 202, tb.isBalanced ? 208 : 202);
+  doc.setLineWidth(1);
+  doc.roundedRect(25, badgeY, 545, 28, 3, 3, 'FD');
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(tb.isBalanced ? 22 : 185, tb.isBalanced ? 101 : 28, tb.isBalanced ? 52 : 28);
+  const badgeText = tb.isBalanced
+    ? `✓ TRIAL BALANCE BALANCED — Total Debits (Rs. ${formatPaise(tb.totalDebit)}) = Total Credits (Rs. ${formatPaise(tb.totalCredit)})`
+    : `⚠ TRIAL BALANCE OUT OF BALANCE — Total Debits (Rs. ${formatPaise(tb.totalDebit)}) ≠ Total Credits (Rs. ${formatPaise(tb.totalCredit)})`;
+  doc.text(badgeText, 35, badgeY + 18);
+
+  // Rows Table
+  const tableRows = tb.rows.map((r) => [
+    r.code,
+    r.name,
+    r.type.toUpperCase(),
+    r.closingDebit > 0 ? formatPaise(r.closingDebit) : '-',
+    r.closingCredit > 0 ? formatPaise(r.closingCredit) : '-',
+  ]);
+
+  autoTable(doc, {
+    startY: badgeY + 36,
+    head: [['Account Code', 'Account Name', 'Type', 'Debit Balance (INR)', 'Credit Balance (INR)']],
+    body: tableRows,
+    theme: 'grid',
+    styles: {
+      fontSize: 8,
+      cellPadding: 4.5,
+      textColor: [15, 23, 42],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.5,
+    },
+    headStyles: {
+      fillColor: [30, 41, 59], // slate-800
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8.5,
+      halign: 'center',
+    },
+    columnStyles: {
+      0: { cellWidth: 70, halign: 'center', fontStyle: 'bold' },
+      1: { cellWidth: 220, halign: 'left' },
+      2: { cellWidth: 75, halign: 'center' },
+      3: { cellWidth: 90, halign: 'right', fontStyle: 'bold', textColor: [180, 83, 9] },
+      4: { cellWidth: 90, halign: 'right', fontStyle: 'bold', textColor: [4, 120, 87] },
+    },
+    foot: [
+      [
+        { content: 'TOTAL', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9, fillColor: [241, 245, 249] } },
+        { content: `Rs. ${formatPaise(tb.totalDebit)}`, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9, textColor: [180, 83, 9], fillColor: [254, 243, 199] } },
+        { content: `Rs. ${formatPaise(tb.totalCredit)}`, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9, textColor: [4, 120, 87], fillColor: [209, 250, 229] } },
+      ],
+    ],
+    footStyles: {
+      lineColor: [203, 213, 225],
+      lineWidth: 0.5,
+    },
+    margin: { left: 25, right: 25 },
+  });
+
+  const safeBiz = (business.name || 'Distributor').replace(/[^a-zA-Z0-9]/g, '_');
+  doc.save(`Trial_Balance_${safeBiz}_${todayStr.replace(/\//g, '')}.pdf`);
+}
+
+// ---------------------------------------------------------------------------
+// 7. BALANCE SHEET PDF EXPORT
+// ---------------------------------------------------------------------------
+export interface BalanceSheetPdfData {
+  business: {
+    name: string;
+    gstin?: string;
+    address?: string;
+    stateCode?: string;
+  };
+  bs: {
+    assetRows: Array<{ id: string; name: string; amount: number }>;
+    liabilityRows: Array<{ id: string; name: string; amount: number }>;
+    equityRows: Array<{ id: string; name: string; amount: number }>;
+    totalAssets: number;
+    totalLiabilities: number;
+    totalEquity: number;
+    currentPeriodProfit: number;
+    isBalanced: boolean;
+  };
+}
+
+export function downloadBalanceSheetPdf(data: BalanceSheetPdfData) {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
+  const { business, bs } = data;
+
+  // Header Banner
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, 595, 68, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(15);
+  doc.setFont('helvetica', 'bold');
+  const bizName = (business.name || 'DISTRIBUTOR FIRM').toUpperCase();
+  doc.text(bizName, 25, 28);
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(226, 232, 240);
+  const bizInfo = `GSTIN: ${business.gstin || 'Unregistered'} | State: ${business.stateCode || '32'} - Kerala | Address: ${business.address || 'Kerala'}`;
+  doc.text(bizInfo.substring(0, 80), 25, 45);
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text('BALANCE SHEET', 430, 28);
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(226, 232, 240);
+  const todayStr = new Date().toLocaleDateString('en-GB');
+  doc.text(`Financial Position | As on ${todayStr}`, 430, 45);
+
+  // Status Badge
+  const badgeY = 78;
+  doc.setFillColor(bs.isBalanced ? 240 : 254, bs.isBalanced ? 253 : 242, bs.isBalanced ? 244 : 242);
+  doc.setDrawColor(bs.isBalanced ? 187 : 254, bs.isBalanced ? 247 : 202, bs.isBalanced ? 208 : 202);
+  doc.setLineWidth(1);
+  doc.roundedRect(25, badgeY, 545, 28, 3, 3, 'FD');
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(bs.isBalanced ? 22 : 185, bs.isBalanced ? 101 : 28, bs.isBalanced ? 52 : 28);
+  const badgeText = bs.isBalanced
+    ? `✓ EQUILIBRIUM ACHIEVED — Total Assets (Rs. ${formatPaise(bs.totalAssets)}) = Total Liabilities & Equity (Rs. ${formatPaise(bs.totalLiabilities + bs.totalEquity)})`
+    : `⚠ BALANCE SHEET DISCREPANCY — Total Assets ≠ Total Liabilities & Equity`;
+  doc.text(badgeText, 35, badgeY + 18);
+
+  // Table 1: Assets
+  const assetRows = bs.assetRows.map((r, idx) => [
+    idx + 1,
+    r.name,
+    formatPaise(r.amount),
+  ]);
+
+  autoTable(doc, {
+    startY: badgeY + 36,
+    head: [['#', 'Asset Account / Category', 'Amount (INR)']],
+    body: assetRows.length > 0 ? assetRows : [['-', 'No asset accounts recorded', '0.00']],
+    theme: 'grid',
+    styles: {
+      fontSize: 8,
+      cellPadding: 4.5,
+      textColor: [15, 23, 42],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.5,
+    },
+    headStyles: {
+      fillColor: [37, 99, 235], // blue-600
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8.5,
+    },
+    columnStyles: {
+      0: { cellWidth: 30, halign: 'center' },
+      1: { cellWidth: 380, halign: 'left' },
+      2: { cellWidth: 135, halign: 'right', fontStyle: 'bold' },
+    },
+    foot: [
+      [
+        { content: 'TOTAL ASSETS', colSpan: 2, styles: { halign: 'right', fontStyle: 'bold', fillColor: [219, 234, 254] } },
+        { content: `Rs. ${formatPaise(bs.totalAssets)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: [29, 78, 216], fillColor: [219, 234, 254] } },
+      ],
+    ],
+    margin: { left: 25, right: 25 },
+  });
+
+  const afterAssetsY = (doc as any).lastAutoTable?.finalY || 240;
+
+  // Table 2: Liabilities & Equity
+  const liabAndEquityRows: any[] = [];
+  bs.liabilityRows.forEach((r, idx) => {
+    liabAndEquityRows.push([idx + 1, `${r.name} (Liability)`, formatPaise(r.amount)]);
+  });
+  bs.equityRows.forEach((r, idx) => {
+    liabAndEquityRows.push([bs.liabilityRows.length + idx + 1, `${r.name} (Equity)`, formatPaise(r.amount)]);
+  });
+  liabAndEquityRows.push([
+    liabAndEquityRows.length + 1,
+    'Current Period Profit / (Loss)',
+    formatPaise(bs.currentPeriodProfit),
+  ]);
+
+  autoTable(doc, {
+    startY: afterAssetsY + 12,
+    head: [['#', 'Liabilities & Equity Account', 'Amount (INR)']],
+    body: liabAndEquityRows,
+    theme: 'grid',
+    styles: {
+      fontSize: 8,
+      cellPadding: 4.5,
+      textColor: [15, 23, 42],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.5,
+    },
+    headStyles: {
+      fillColor: [124, 58, 237], // purple-600
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8.5,
+    },
+    columnStyles: {
+      0: { cellWidth: 30, halign: 'center' },
+      1: { cellWidth: 380, halign: 'left' },
+      2: { cellWidth: 135, halign: 'right', fontStyle: 'bold' },
+    },
+    foot: [
+      [
+        { content: 'TOTAL LIABILITIES & EQUITY', colSpan: 2, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9, fillColor: [243, 232, 255] } },
+        { content: `Rs. ${formatPaise(bs.totalLiabilities + bs.totalEquity)}`, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9, textColor: [109, 40, 217], fillColor: [243, 232, 255] } },
+      ],
+    ],
+    margin: { left: 25, right: 25 },
+  });
+
+  const safeBiz = (business.name || 'Distributor').replace(/[^a-zA-Z0-9]/g, '_');
+  doc.save(`Balance_Sheet_${safeBiz}_${todayStr.replace(/\//g, '')}.pdf`);
+}
+
+// ---------------------------------------------------------------------------
+// 8. GST TAX SUMMARY & REGISTER PDF EXPORT
+// ---------------------------------------------------------------------------
+export interface GstReportPdfData {
+  business: {
+    name: string;
+    gstin?: string;
+    address?: string;
+    stateCode?: string;
+  };
+  gst: {
+    output: { total: number; cgst: number; sgst: number; igst: number };
+    input: { total: number; cgst: number; sgst: number; igst: number };
+    netGstPayable: number;
+    salesRegister?: Array<{
+      invoiceNo: string;
+      date: string;
+      customerName: string;
+      customerGstin: string;
+      placeOfSupply: string;
+      taxableValue: number;
+      cgst: number;
+      sgst: number;
+      igst: number;
+      totalInvoiceValue: number;
+    }>;
+  };
+}
+
+export function downloadGstReportPdf(data: GstReportPdfData) {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
+  const { business, gst } = data;
+
+  // Header Banner
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, 842, 68, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  const bizName = (business.name || 'DISTRIBUTOR FIRM').toUpperCase();
+  doc.text(bizName, 25, 28);
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(226, 232, 240);
+  const bizInfo = `GSTIN: ${business.gstin || 'Unregistered'} | State: ${business.stateCode || '32'} - Kerala | Address: ${business.address || 'Kerala'}`;
+  doc.text(bizInfo.substring(0, 100), 25, 45);
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text('GST SUMMARY & GSTR-1 REGISTER', 550, 28);
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(226, 232, 240);
+  const todayStr = new Date().toLocaleDateString('en-GB');
+  doc.text(`Tax Period Filing Summary | Generated ${todayStr}`, 550, 45);
+
+  // 3 KPI Cards
+  const cardY = 76;
+  const cardH = 50;
+
+  // Box 1: Output GST
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(1);
+  doc.roundedRect(25, cardY, 255, cardH, 3, 3, 'FD');
+  doc.setFillColor(239, 68, 68); // red
+  doc.rect(25, cardY, 255, 3, 'F');
+  doc.setTextColor(71, 85, 105);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('OUTPUT GST (TAX ON SALES)', 35, cardY + 16);
+  doc.setTextColor(220, 38, 38);
+  doc.setFontSize(12);
+  doc.text(`Rs. ${formatPaise(gst.output.total)}`, 35, cardY + 34);
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`CGST: Rs. ${formatPaise(gst.output.cgst)} | SGST: Rs. ${formatPaise(gst.output.sgst)} | IGST: Rs. ${formatPaise(gst.output.igst)}`, 35, cardY + 45);
+
+  // Box 2: Input Tax Credit
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(293, cardY, 255, cardH, 3, 3, 'FD');
+  doc.setFillColor(16, 185, 129); // emerald
+  doc.rect(293, cardY, 255, 3, 'F');
+  doc.setTextColor(71, 85, 105);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('INPUT TAX CREDIT (ITC ON PURCHASES)', 303, cardY + 16);
+  doc.setTextColor(5, 150, 105);
+  doc.setFontSize(12);
+  doc.text(`Rs. ${formatPaise(gst.input.total)}`, 303, cardY + 34);
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`CGST: Rs. ${formatPaise(gst.input.cgst)} | SGST: Rs. ${formatPaise(gst.input.sgst)} | IGST: Rs. ${formatPaise(gst.input.igst)}`, 303, cardY + 45);
+
+  // Box 3: Net GST Payable
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(561, cardY, 256, cardH, 3, 3, 'FD');
+  doc.setFillColor(37, 99, 235); // blue
+  doc.rect(561, cardY, 256, 3, 'F');
+  doc.setTextColor(71, 85, 105);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('NET GST PAYABLE TO GOVERNMENT', 571, cardY + 16);
+  doc.setTextColor(29, 78, 216);
+  doc.setFontSize(13);
+  doc.text(`Rs. ${formatPaise(gst.netGstPayable)}`, 571, cardY + 34);
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Output Tax minus eligible ITC', 571, cardY + 45);
+
+  // Sales Register Table
+  const sales = gst.salesRegister || [];
+  let totalTaxable = 0, totalCgst = 0, totalSgst = 0, totalIgst = 0, totalInvVal = 0;
+
+  const tableRows = sales.map((s, idx) => {
+    totalTaxable += s.taxableValue || 0;
+    totalCgst += s.cgst || 0;
+    totalSgst += s.sgst || 0;
+    totalIgst += s.igst || 0;
+    totalInvVal += s.totalInvoiceValue || 0;
+
+    return [
+      idx + 1,
+      s.invoiceNo,
+      s.date,
+      s.customerName,
+      s.customerGstin || 'Unregistered',
+      s.placeOfSupply,
+      formatPaise(s.taxableValue),
+      formatPaise(s.cgst),
+      formatPaise(s.sgst),
+      formatPaise(s.igst),
+      formatPaise(s.totalInvoiceValue),
+    ];
+  });
+
+  autoTable(doc, {
+    startY: cardY + cardH + 12,
+    head: [[
+      '#',
+      'Invoice #',
+      'Date',
+      'Customer Name',
+      'Customer GSTIN',
+      'POS',
+      'Taxable Value (Rs)',
+      'CGST (Rs)',
+      'SGST (Rs)',
+      'IGST (Rs)',
+      'Total Value (Rs)',
+    ]],
+    body: tableRows.length > 0 ? tableRows : [['-', '-', '-', 'No B2B/B2C sales invoices recorded', '-', '-', '0.00', '0.00', '0.00', '0.00', '0.00']],
+    theme: 'grid',
+    styles: {
+      fontSize: 7.5,
+      cellPadding: 4,
+      textColor: [15, 23, 42],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.5,
+    },
+    headStyles: {
+      fillColor: [30, 41, 59],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8,
+      halign: 'center',
+    },
+    columnStyles: {
+      0: { cellWidth: 25, halign: 'center' },
+      1: { cellWidth: 85, halign: 'left', fontStyle: 'bold' },
+      2: { cellWidth: 55, halign: 'center' },
+      3: { cellWidth: 120, halign: 'left' },
+      4: { cellWidth: 95, halign: 'center' },
+      5: { cellWidth: 40, halign: 'center' },
+      6: { cellWidth: 72, halign: 'right' },
+      7: { cellWidth: 58, halign: 'right' },
+      8: { cellWidth: 58, halign: 'right' },
+      9: { cellWidth: 58, halign: 'right' },
+      10: { cellWidth: 76, halign: 'right', fontStyle: 'bold', textColor: [29, 78, 216] },
+    },
+    foot: [
+      [
+        { content: `TOTALS (${sales.length} INVOICES)`, colSpan: 6, styles: { halign: 'right', fontStyle: 'bold', fontSize: 8, fillColor: [241, 245, 249] } },
+        { content: formatPaise(totalTaxable), styles: { halign: 'right', fontStyle: 'bold', fillColor: [241, 245, 249] } },
+        { content: formatPaise(totalCgst), styles: { halign: 'right', fontStyle: 'bold', fillColor: [241, 245, 249] } },
+        { content: formatPaise(totalSgst), styles: { halign: 'right', fontStyle: 'bold', fillColor: [241, 245, 249] } },
+        { content: formatPaise(totalIgst), styles: { halign: 'right', fontStyle: 'bold', fillColor: [241, 245, 249] } },
+        { content: formatPaise(totalInvVal), styles: { halign: 'right', fontStyle: 'bold', textColor: [29, 78, 216], fillColor: [238, 242, 255] } },
+      ],
+    ],
+    footStyles: {
+      lineColor: [203, 213, 225],
+      lineWidth: 0.5,
+    },
+    margin: { left: 20, right: 20 },
+  });
+
+  const safeBiz = (business.name || 'Distributor').replace(/[^a-zA-Z0-9]/g, '_');
+  doc.save(`GST_Summary_Report_${safeBiz}_${todayStr.replace(/\//g, '')}.pdf`);
+}

@@ -5,7 +5,13 @@ import { AppShell } from '@/components/layout/AppShell';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
 import { formatPaise } from '@bizledger/shared';
-import { downloadDetailedTradingPdf } from '@/lib/pdf';
+import {
+  downloadDetailedTradingPdf,
+  downloadPnlPdf,
+  downloadTrialBalancePdf,
+  downloadBalanceSheetPdf,
+  downloadGstReportPdf,
+} from '@/lib/pdf';
 import * as XLSX from 'xlsx';
 import {
   BarChart3,
@@ -17,7 +23,6 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
-  Printer,
   Search,
   Building2,
   Filter,
@@ -612,6 +617,779 @@ export default function ReportsPage() {
     exportCsv('GSTR1_Sales_Register.csv', rows);
   };
 
+  // --- P&L EXPORTS (PDF & EXCEL) ---
+  const handleExportPnlPdf = () => {
+    if (!pnlData) return;
+    const dist = detailedData?.distributor || business;
+    downloadPnlPdf({
+      business: {
+        name: dist?.name || business?.name || 'Distributor Firm',
+        gstin: dist?.gstin?.trim() || business?.gstin?.trim() || 'Unregistered',
+        address: dist?.address || business?.address || 'Kerala',
+        stateCode: dist?.stateCode || business?.stateCode || '32',
+      },
+      pnl: pnlData,
+    });
+  };
+
+  const handleExportPnlExcel = async () => {
+    if (!pnlData) return;
+    const dist = detailedData?.distributor || business;
+    const ExcelJSModule = await import('exceljs');
+    const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Profit & Loss', { views: [{ showGridLines: true }] });
+
+    const thinBorder = {
+      top: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      left: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      bottom: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      right: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+    };
+
+    ws.columns = [{ width: 45 }, { width: 25 }];
+
+    const distName = (dist?.name || business?.name || 'DISTRIBUTOR FIRM').toUpperCase();
+    const gstin = dist?.gstin?.trim() || business?.gstin?.trim() || 'Unregistered';
+    const state = `${dist?.stateCode || business?.stateCode || '32'} - Kerala`;
+    const addr = dist?.address || business?.address || 'Kerala';
+    const now = new Date();
+    const genTimeStr = `${now.toLocaleDateString('en-GB')}, ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).toLowerCase()}`;
+
+    // Row 1: Merged A1:B1 Red
+    ws.mergeCells('A1:B1');
+    const row1 = ws.getRow(1);
+    row1.height = 26;
+    ws.getCell('A1').value = distName;
+    for (let c = 1; c <= 2; c++) {
+      const cell = row1.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB83B2F' } };
+      cell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = thinBorder;
+    }
+
+    // Rows 2-4: Merged A:B Slate Blue
+    const subRows = [
+      `GSTIN: ${gstin} | State: ${state} | Address: ${addr}`,
+      'PROFIT & LOSS STATEMENT (FINANCIAL SUMMARY)',
+      `Generated: ${genTimeStr} | Net Trading Profit: Rs. ${formatPaise(pnlData.netProfit)}`,
+    ];
+    subRows.forEach((txt, idx) => {
+      const r = idx + 2;
+      ws.mergeCells(`A${r}:B${r}`);
+      const row = ws.getRow(r);
+      row.height = 20;
+      ws.getCell(`A${r}`).value = txt;
+      for (let c = 1; c <= 2; c++) {
+        const cell = row.getCell(c);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B6E9F' } };
+        cell.font = { name: 'Calibri', size: 10, bold: idx === 1, color: { argb: 'FFFFFFFF' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = thinBorder;
+      }
+    });
+
+    let currRow = 6;
+    // Section 1: Income
+    const rIncHead = ws.getRow(currRow);
+    rIncHead.height = 24;
+    rIncHead.getCell(1).value = 'INCOME / REVENUE ACCOUNTS';
+    rIncHead.getCell(2).value = 'AMOUNT (INR)';
+    for (let c = 1; c <= 2; c++) {
+      const cell = rIncHead.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF065F46' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+    }
+    currRow++;
+
+    pnlData.incomeRows.forEach((r: any) => {
+      const row = ws.getRow(currRow);
+      row.height = 20;
+      row.getCell(1).value = r.name;
+      row.getCell(2).value = r.amount / 100;
+      for (let c = 1; c <= 2; c++) {
+        const cell = row.getCell(c);
+        cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF0F172A' } };
+        cell.border = thinBorder;
+        cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+      }
+      currRow++;
+    });
+
+    // Total Income Row
+    const rTotInc = ws.getRow(currRow);
+    rTotInc.height = 22;
+    rTotInc.getCell(1).value = 'TOTAL INCOME / REVENUE';
+    rTotInc.getCell(2).value = pnlData.totalIncome / 100;
+    for (let c = 1; c <= 2; c++) {
+      const cell = rTotInc.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFECFDF5' } };
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF047857' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+    }
+    currRow += 2;
+
+    // Section 2: Expense
+    const rExpHead = ws.getRow(currRow);
+    rExpHead.height = 24;
+    rExpHead.getCell(1).value = 'EXPENSES & PURCHASES ACCOUNTS';
+    rExpHead.getCell(2).value = 'AMOUNT (INR)';
+    for (let c = 1; c <= 2; c++) {
+      const cell = rExpHead.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF991B1B' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+    }
+    currRow++;
+
+    pnlData.expenseRows.forEach((r: any) => {
+      const row = ws.getRow(currRow);
+      row.height = 20;
+      row.getCell(1).value = r.name;
+      row.getCell(2).value = r.amount / 100;
+      for (let c = 1; c <= 2; c++) {
+        const cell = row.getCell(c);
+        cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF0F172A' } };
+        cell.border = thinBorder;
+        cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+      }
+      currRow++;
+    });
+
+    // Total Expense Row
+    const rTotExp = ws.getRow(currRow);
+    rTotExp.height = 22;
+    rTotExp.getCell(1).value = 'TOTAL EXPENSES & PURCHASES';
+    rTotExp.getCell(2).value = pnlData.totalExpense / 100;
+    for (let c = 1; c <= 2; c++) {
+      const cell = rTotExp.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } };
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFDC2626' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+    }
+    currRow += 2;
+
+    // Grand Net Profit Row
+    const rNet = ws.getRow(currRow);
+    rNet.height = 24;
+    rNet.getCell(1).value = 'NET PROFIT / (LOSS) FOR PERIOD';
+    rNet.getCell(2).value = pnlData.netProfit / 100;
+    for (let c = 1; c <= 2; c++) {
+      const cell = rNet.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+      cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF1D4ED8' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+    }
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeDist = (dist?.name || 'Distributor').replace(/[^a-zA-Z0-9]/g, '_');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Profit_and_Loss_Report_${safeDist}.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // --- TRIAL BALANCE EXPORTS (PDF & EXCEL) ---
+  const handleExportTbPdf = () => {
+    if (!tbData) return;
+    const dist = detailedData?.distributor || business;
+    downloadTrialBalancePdf({
+      business: {
+        name: dist?.name || business?.name || 'Distributor Firm',
+        gstin: dist?.gstin?.trim() || business?.gstin?.trim() || 'Unregistered',
+        address: dist?.address || business?.address || 'Kerala',
+        stateCode: dist?.stateCode || business?.stateCode || '32',
+      },
+      tb: tbData,
+    });
+  };
+
+  const handleExportTbExcel = async () => {
+    if (!tbData) return;
+    const dist = detailedData?.distributor || business;
+    const ExcelJSModule = await import('exceljs');
+    const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Trial Balance', { views: [{ showGridLines: true }] });
+
+    const thinBorder = {
+      top: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      left: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      bottom: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      right: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+    };
+
+    ws.columns = [
+      { width: 14 }, // Code
+      { width: 36 }, // Account Name
+      { width: 18 }, // Type
+      { width: 22 }, // Debit Balance
+      { width: 22 }, // Credit Balance
+    ];
+
+    const distName = (dist?.name || business?.name || 'DISTRIBUTOR FIRM').toUpperCase();
+    const gstin = dist?.gstin?.trim() || business?.gstin?.trim() || 'Unregistered';
+    const state = `${dist?.stateCode || business?.stateCode || '32'} - Kerala`;
+    const addr = dist?.address || business?.address || 'Kerala';
+    const now = new Date();
+    const genTimeStr = `${now.toLocaleDateString('en-GB')}, ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).toLowerCase()}`;
+
+    // Row 1: Merged A1:E1 Red
+    ws.mergeCells('A1:E1');
+    const row1 = ws.getRow(1);
+    row1.height = 26;
+    ws.getCell('A1').value = distName;
+    for (let c = 1; c <= 5; c++) {
+      const cell = row1.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB83B2F' } };
+      cell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = thinBorder;
+    }
+
+    // Rows 2-4: Merged A:E Slate Blue
+    const subRows = [
+      `GSTIN: ${gstin} | State: ${state} | Address: ${addr}`,
+      'TRIAL BALANCE REGISTER (CLOSING BALANCES)',
+      `Generated: ${genTimeStr} | Status: ${tbData.isBalanced ? 'Balanced (Debits = Credits)' : 'Out of Balance'}`,
+    ];
+    subRows.forEach((txt, idx) => {
+      const r = idx + 2;
+      ws.mergeCells(`A${r}:E${r}`);
+      const row = ws.getRow(r);
+      row.height = 20;
+      ws.getCell(`A${r}`).value = txt;
+      for (let c = 1; c <= 5; c++) {
+        const cell = row.getCell(c);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B6E9F' } };
+        cell.font = { name: 'Calibri', size: 10, bold: idx === 1, color: { argb: 'FFFFFFFF' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = thinBorder;
+      }
+    });
+
+    // Row 5: Column Headers
+    const headers = ['Account Code', 'Account Name', 'Type', 'Debit Balance (INR)', 'Credit Balance (INR)'];
+    const row5 = ws.getRow(5);
+    row5.height = 28;
+    headers.forEach((h, idx) => {
+      const cell = row5.getCell(idx + 1);
+      cell.value = h;
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1E293B' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: idx >= 3 ? 'right' : idx === 1 ? 'left' : 'center', vertical: 'middle' };
+    });
+
+    // Data rows
+    tbData.rows.forEach((r: any, idx: number) => {
+      const rowNum = 6 + idx;
+      const row = ws.getRow(rowNum);
+      row.height = 20;
+      row.getCell(1).value = r.code;
+      row.getCell(2).value = r.name;
+      row.getCell(3).value = r.type.toUpperCase();
+      row.getCell(4).value = r.closingDebit ? r.closingDebit / 100 : 0;
+      row.getCell(5).value = r.closingCredit ? r.closingCredit / 100 : 0;
+
+      for (let c = 1; c <= 5; c++) {
+        const cell = row.getCell(c);
+        cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF0F172A' } };
+        cell.border = thinBorder;
+        cell.alignment = { horizontal: c >= 4 ? 'right' : c === 2 ? 'left' : 'center', vertical: 'middle' };
+      }
+    });
+
+    // Totals Row
+    const totRowNum = 6 + tbData.rows.length + 1;
+    ws.mergeCells(`A${totRowNum}:C${totRowNum}`);
+    const totRow = ws.getRow(totRowNum);
+    totRow.height = 24;
+    for (let c = 1; c <= 5; c++) {
+      const cell = totRow.getCell(c);
+      cell.border = thinBorder;
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+    }
+    const cellTot = ws.getCell(`A${totRowNum}`);
+    cellTot.value = 'TOTAL';
+    cellTot.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+    cellTot.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    const cellDeb = ws.getCell(`D${totRowNum}`);
+    cellDeb.value = tbData.totalDebit / 100;
+    cellDeb.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFB45309' } };
+    cellDeb.alignment = { horizontal: 'right', vertical: 'middle' };
+
+    const cellCred = ws.getCell(`E${totRowNum}`);
+    cellCred.value = tbData.totalCredit / 100;
+    cellCred.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF047857' } };
+    cellCred.alignment = { horizontal: 'right', vertical: 'middle' };
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeDist = (dist?.name || 'Distributor').replace(/[^a-zA-Z0-9]/g, '_');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Trial_Balance_${safeDist}.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // --- BALANCE SHEET EXPORTS (PDF & EXCEL) ---
+  const handleExportBsPdf = () => {
+    if (!bsData) return;
+    const dist = detailedData?.distributor || business;
+    downloadBalanceSheetPdf({
+      business: {
+        name: dist?.name || business?.name || 'Distributor Firm',
+        gstin: dist?.gstin?.trim() || business?.gstin?.trim() || 'Unregistered',
+        address: dist?.address || business?.address || 'Kerala',
+        stateCode: dist?.stateCode || business?.stateCode || '32',
+      },
+      bs: bsData,
+    });
+  };
+
+  const handleExportBsExcel = async () => {
+    if (!bsData) return;
+    const dist = detailedData?.distributor || business;
+    const ExcelJSModule = await import('exceljs');
+    const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Balance Sheet', { views: [{ showGridLines: true }] });
+
+    const thinBorder = {
+      top: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      left: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      bottom: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      right: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+    };
+
+    ws.columns = [{ width: 45 }, { width: 25 }];
+
+    const distName = (dist?.name || business?.name || 'DISTRIBUTOR FIRM').toUpperCase();
+    const gstin = dist?.gstin?.trim() || business?.gstin?.trim() || 'Unregistered';
+    const state = `${dist?.stateCode || business?.stateCode || '32'} - Kerala`;
+    const addr = dist?.address || business?.address || 'Kerala';
+    const now = new Date();
+    const genTimeStr = `${now.toLocaleDateString('en-GB')}, ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).toLowerCase()}`;
+
+    // Row 1: Merged A1:B1 Red
+    ws.mergeCells('A1:B1');
+    const row1 = ws.getRow(1);
+    row1.height = 26;
+    ws.getCell('A1').value = distName;
+    for (let c = 1; c <= 2; c++) {
+      const cell = row1.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB83B2F' } };
+      cell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = thinBorder;
+    }
+
+    // Rows 2-4: Merged A:B Slate Blue
+    const subRows = [
+      `GSTIN: ${gstin} | State: ${state} | Address: ${addr}`,
+      'BALANCE SHEET (STATEMENT OF FINANCIAL POSITION)',
+      `Generated: ${genTimeStr} | Status: ${bsData.isBalanced ? 'Balanced (Assets = Liabilities + Equity)' : 'Unbalanced'}`,
+    ];
+    subRows.forEach((txt, idx) => {
+      const r = idx + 2;
+      ws.mergeCells(`A${r}:B${r}`);
+      const row = ws.getRow(r);
+      row.height = 20;
+      ws.getCell(`A${r}`).value = txt;
+      for (let c = 1; c <= 2; c++) {
+        const cell = row.getCell(c);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B6E9F' } };
+        cell.font = { name: 'Calibri', size: 10, bold: idx === 1, color: { argb: 'FFFFFFFF' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = thinBorder;
+      }
+    });
+
+    let currRow = 6;
+    // Section 1: Assets
+    const rAssetHead = ws.getRow(currRow);
+    rAssetHead.height = 24;
+    rAssetHead.getCell(1).value = 'ASSETS';
+    rAssetHead.getCell(2).value = 'AMOUNT (INR)';
+    for (let c = 1; c <= 2; c++) {
+      const cell = rAssetHead.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1E40AF' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+    }
+    currRow++;
+
+    bsData.assetRows.forEach((r: any) => {
+      const row = ws.getRow(currRow);
+      row.height = 20;
+      row.getCell(1).value = r.name;
+      row.getCell(2).value = r.amount / 100;
+      for (let c = 1; c <= 2; c++) {
+        const cell = row.getCell(c);
+        cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF0F172A' } };
+        cell.border = thinBorder;
+        cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+      }
+      currRow++;
+    });
+
+    // Total Assets Row
+    const rTotAsset = ws.getRow(currRow);
+    rTotAsset.height = 22;
+    rTotAsset.getCell(1).value = 'TOTAL ASSETS';
+    rTotAsset.getCell(2).value = bsData.totalAssets / 100;
+    for (let c = 1; c <= 2; c++) {
+      const cell = rTotAsset.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1D4ED8' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+    }
+    currRow += 2;
+
+    // Section 2: Liabilities
+    const rLiabHead = ws.getRow(currRow);
+    rLiabHead.height = 24;
+    rLiabHead.getCell(1).value = 'LIABILITIES';
+    rLiabHead.getCell(2).value = 'AMOUNT (INR)';
+    for (let c = 1; c <= 2; c++) {
+      const cell = rLiabHead.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E8FF' } };
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF6B21A8' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+    }
+    currRow++;
+
+    bsData.liabilityRows.forEach((r: any) => {
+      const row = ws.getRow(currRow);
+      row.height = 20;
+      row.getCell(1).value = r.name;
+      row.getCell(2).value = r.amount / 100;
+      for (let c = 1; c <= 2; c++) {
+        const cell = row.getCell(c);
+        cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF0F172A' } };
+        cell.border = thinBorder;
+        cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+      }
+      currRow++;
+    });
+
+    // Total Liabilities Row
+    const rTotLiab = ws.getRow(currRow);
+    rTotLiab.height = 22;
+    rTotLiab.getCell(1).value = 'TOTAL LIABILITIES';
+    rTotLiab.getCell(2).value = bsData.totalLiabilities / 100;
+    for (let c = 1; c <= 2; c++) {
+      const cell = rTotLiab.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAF5FF' } };
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF7E22CE' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+    }
+    currRow += 2;
+
+    // Section 3: Equity
+    const rEqHead = ws.getRow(currRow);
+    rEqHead.height = 24;
+    rEqHead.getCell(1).value = 'EQUITY';
+    rEqHead.getCell(2).value = 'AMOUNT (INR)';
+    for (let c = 1; c <= 2; c++) {
+      const cell = rEqHead.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7FF' } };
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF3730A3' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+    }
+    currRow++;
+
+    bsData.equityRows.forEach((r: any) => {
+      const row = ws.getRow(currRow);
+      row.height = 20;
+      row.getCell(1).value = r.name;
+      row.getCell(2).value = r.amount / 100;
+      for (let c = 1; c <= 2; c++) {
+        const cell = row.getCell(c);
+        cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF0F172A' } };
+        cell.border = thinBorder;
+        cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+      }
+      currRow++;
+    });
+
+    // Current Period Profit row
+    const rProf = ws.getRow(currRow);
+    rProf.height = 20;
+    rProf.getCell(1).value = 'Current Period Profit / (Loss)';
+    rProf.getCell(2).value = bsData.currentPeriodProfit / 100;
+    for (let c = 1; c <= 2; c++) {
+      const cell = rProf.getCell(c);
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF059669' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+    }
+    currRow++;
+
+    // Total Equity Row
+    const rTotEq = ws.getRow(currRow);
+    rTotEq.height = 22;
+    rTotEq.getCell(1).value = 'TOTAL EQUITY';
+    rTotEq.getCell(2).value = bsData.totalEquity / 100;
+    for (let c = 1; c <= 2; c++) {
+      const cell = rTotEq.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF4338CA' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+    }
+    currRow += 2;
+
+    // Grand Liabilities & Equity Row
+    const rTotLiabEq = ws.getRow(currRow);
+    rTotLiabEq.height = 24;
+    rTotLiabEq.getCell(1).value = 'TOTAL LIABILITIES & EQUITY';
+    rTotLiabEq.getCell(2).value = (bsData.totalLiabilities + bsData.totalEquity) / 100;
+    for (let c = 1; c <= 2; c++) {
+      const cell = rTotLiabEq.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E8FF' } };
+      cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF6B21A8' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+    }
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeDist = (dist?.name || 'Distributor').replace(/[^a-zA-Z0-9]/g, '_');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Balance_Sheet_${safeDist}.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // --- GST EXPORTS (PDF & EXCEL) ---
+  const handleExportGstPdf = () => {
+    if (!gstData) return;
+    const dist = detailedData?.distributor || business;
+    downloadGstReportPdf({
+      business: {
+        name: dist?.name || business?.name || 'Distributor Firm',
+        gstin: dist?.gstin?.trim() || business?.gstin?.trim() || 'Unregistered',
+        address: dist?.address || business?.address || 'Kerala',
+        stateCode: dist?.stateCode || business?.stateCode || '32',
+      },
+      gst: gstData,
+    });
+  };
+
+  const handleExportGstExcel = async () => {
+    if (!gstData) return;
+    const dist = detailedData?.distributor || business;
+    const ExcelJSModule = await import('exceljs');
+    const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('GST Returns', { views: [{ showGridLines: true }] });
+
+    const thinBorder = {
+      top: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      left: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      bottom: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      right: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+    };
+
+    ws.columns = [
+      { width: 8 },  // Sl No
+      { width: 18 }, // Invoice #
+      { width: 14 }, // Date
+      { width: 26 }, // Customer Name
+      { width: 18 }, // GSTIN
+      { width: 10 }, // POS
+      { width: 16 }, // Taxable
+      { width: 14 }, // CGST
+      { width: 14 }, // SGST
+      { width: 14 }, // IGST
+      { width: 18 }, // Total Value
+    ];
+
+    const distName = (dist?.name || business?.name || 'DISTRIBUTOR FIRM').toUpperCase();
+    const gstin = dist?.gstin?.trim() || business?.gstin?.trim() || 'Unregistered';
+    const state = `${dist?.stateCode || business?.stateCode || '32'} - Kerala`;
+    const addr = dist?.address || business?.address || 'Kerala';
+    const now = new Date();
+    const genTimeStr = `${now.toLocaleDateString('en-GB')}, ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).toLowerCase()}`;
+
+    // Row 1: Merged A1:K1 Red
+    ws.mergeCells('A1:K1');
+    const row1 = ws.getRow(1);
+    row1.height = 26;
+    ws.getCell('A1').value = distName;
+    for (let c = 1; c <= 11; c++) {
+      const cell = row1.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB83B2F' } };
+      cell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = thinBorder;
+    }
+
+    // Rows 2-4: Merged A:K Slate Blue
+    const subRows = [
+      `GSTIN: ${gstin} | State: ${state} | Address: ${addr}`,
+      'GST TAX SUMMARY & GSTR-1 SALES REGISTER',
+      `Generated: ${genTimeStr} | Output Tax: Rs. ${formatPaise(gstData.output.total)} | ITC: Rs. ${formatPaise(gstData.input.total)} | Net GST Payable: Rs. ${formatPaise(gstData.netGstPayable)}`,
+    ];
+    subRows.forEach((txt, idx) => {
+      const r = idx + 2;
+      ws.mergeCells(`A${r}:K${r}`);
+      const row = ws.getRow(r);
+      row.height = 20;
+      ws.getCell(`A${r}`).value = txt;
+      for (let c = 1; c <= 11; c++) {
+        const cell = row.getCell(c);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B6E9F' } };
+        cell.font = { name: 'Calibri', size: 10, bold: idx === 1, color: { argb: 'FFFFFFFF' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = thinBorder;
+      }
+    });
+
+    // Row 6: Column Headers for Sales Register
+    const headers = [
+      'Sl No',
+      'Invoice No',
+      'Date',
+      'Customer Name',
+      'Customer GSTIN',
+      'Place of Supply',
+      'Taxable Value (INR)',
+      'CGST (INR)',
+      'SGST (INR)',
+      'IGST (INR)',
+      'Total Value (INR)',
+    ];
+    const row6 = ws.getRow(6);
+    row6.height = 28;
+    headers.forEach((h, idx) => {
+      const cell = row6.getCell(idx + 1);
+      cell.value = h;
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1E293B' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: idx >= 6 ? 'right' : idx === 3 ? 'left' : 'center', vertical: 'middle' };
+    });
+
+    const sales = gstData.salesRegister || [];
+    let totTaxable = 0, totCgst = 0, totSgst = 0, totIgst = 0, totInv = 0;
+
+    sales.forEach((s: any, idx: number) => {
+      const rowNum = 7 + idx;
+      const row = ws.getRow(rowNum);
+      row.height = 20;
+
+      totTaxable += s.taxableValue || 0;
+      totCgst += s.cgst || 0;
+      totSgst += s.sgst || 0;
+      totIgst += s.igst || 0;
+      totInv += s.totalInvoiceValue || 0;
+
+      row.getCell(1).value = idx + 1;
+      row.getCell(2).value = s.invoiceNo;
+      row.getCell(3).value = s.date;
+      row.getCell(4).value = s.customerName;
+      row.getCell(5).value = s.customerGstin || 'Unregistered';
+      row.getCell(6).value = s.placeOfSupply;
+      row.getCell(7).value = s.taxableValue ? s.taxableValue / 100 : 0;
+      row.getCell(8).value = s.cgst ? s.cgst / 100 : 0;
+      row.getCell(9).value = s.sgst ? s.sgst / 100 : 0;
+      row.getCell(10).value = s.igst ? s.igst / 100 : 0;
+      row.getCell(11).value = s.totalInvoiceValue ? s.totalInvoiceValue / 100 : 0;
+
+      for (let c = 1; c <= 11; c++) {
+        const cell = row.getCell(c);
+        cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF0F172A' } };
+        cell.border = thinBorder;
+        cell.alignment = { horizontal: c >= 7 ? 'right' : c === 4 ? 'left' : 'center', vertical: 'middle' };
+      }
+    });
+
+    // Blank row
+    const blankRowNum = 7 + sales.length;
+    const blankRow = ws.getRow(blankRowNum);
+    blankRow.height = 14;
+    for (let c = 1; c <= 11; c++) {
+      blankRow.getCell(c).border = thinBorder;
+    }
+
+    // Totals Row
+    const totRowNum = blankRowNum + 1;
+    ws.mergeCells(`A${totRowNum}:F${totRowNum}`);
+    const totRow = ws.getRow(totRowNum);
+    totRow.height = 24;
+    for (let c = 1; c <= 11; c++) {
+      const cell = totRow.getCell(c);
+      cell.border = thinBorder;
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+    }
+
+    const cellTot = ws.getCell(`A${totRowNum}`);
+    cellTot.value = `GRAND TOTALS (${sales.length} INVOICES)`;
+    cellTot.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+    cellTot.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    ws.getCell(`G${totRowNum}`).value = totTaxable / 100;
+    ws.getCell(`G${totRowNum}`).font = { name: 'Calibri', size: 10, bold: true };
+    ws.getCell(`G${totRowNum}`).alignment = { horizontal: 'right', vertical: 'middle' };
+
+    ws.getCell(`H${totRowNum}`).value = totCgst / 100;
+    ws.getCell(`H${totRowNum}`).font = { name: 'Calibri', size: 10, bold: true };
+    ws.getCell(`H${totRowNum}`).alignment = { horizontal: 'right', vertical: 'middle' };
+
+    ws.getCell(`I${totRowNum}`).value = totSgst / 100;
+    ws.getCell(`I${totRowNum}`).font = { name: 'Calibri', size: 10, bold: true };
+    ws.getCell(`I${totRowNum}`).alignment = { horizontal: 'right', vertical: 'middle' };
+
+    ws.getCell(`J${totRowNum}`).value = totIgst / 100;
+    ws.getCell(`J${totRowNum}`).font = { name: 'Calibri', size: 10, bold: true };
+    ws.getCell(`J${totRowNum}`).alignment = { horizontal: 'right', vertical: 'middle' };
+
+    ws.getCell(`K${totRowNum}`).value = totInv / 100;
+    ws.getCell(`K${totRowNum}`).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1D4ED8' } };
+    ws.getCell(`K${totRowNum}`).alignment = { horizontal: 'right', vertical: 'middle' };
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeDist = (dist?.name || 'Distributor').replace(/[^a-zA-Z0-9]/g, '_');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `GST_Register_${safeDist}.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const currentDistributor = detailedData?.distributor || business;
 
   return (
@@ -658,36 +1436,113 @@ export default function ReportsPage() {
                   <FileText className="w-4 h-4 mr-1.5" />
                   <span>Export to PDF</span>
                 </button>
+              </>
+            )}
+
+            {activeTab === 'pnl' && (
+              <>
+                <button
+                  onClick={handleExportPnlExcel}
+                  className="inline-flex items-center px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                  title="Export Profit & Loss Statement to Microsoft Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-4 h-4 mr-1.5" />
+                  <span>Export to Excel (.xlsx)</span>
+                </button>
 
                 <button
-                  onClick={() => window.print()}
-                  className="inline-flex items-center px-3 py-2 bg-slate-800 hover:bg-slate-900 text-slate-200 rounded-lg text-xs font-medium shadow-xs transition"
-                  title="Print / Save as PDF from browser"
+                  onClick={handleExportPnlPdf}
+                  className="inline-flex items-center px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                  title="Export Profit & Loss Statement to beautifully formatted PDF"
                 >
-                  <Printer className="w-3.5 h-3.5 mr-1.5" />
-                  <span>Print View</span>
+                  <FileText className="w-4 h-4 mr-1.5" />
+                  <span>Export to PDF</span>
                 </button>
               </>
             )}
 
             {activeTab === 'tb' && (
-              <button
-                onClick={handleExportTrialBalance}
-                className="inline-flex items-center px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold shadow-xs transition"
-              >
-                <Download className="w-3.5 h-3.5 mr-1.5" />
-                Export CSV
-              </button>
+              <>
+                <button
+                  onClick={handleExportTbExcel}
+                  className="inline-flex items-center px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                  title="Export Trial Balance to Microsoft Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-4 h-4 mr-1.5" />
+                  <span>Export to Excel (.xlsx)</span>
+                </button>
+
+                <button
+                  onClick={handleExportTrialBalance}
+                  className="inline-flex items-center px-3 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                  title="Export Trial Balance to CSV file"
+                >
+                  <Download className="w-4 h-4 mr-1.5" />
+                  <span>Export CSV</span>
+                </button>
+
+                <button
+                  onClick={handleExportTbPdf}
+                  className="inline-flex items-center px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                  title="Export Trial Balance to beautifully formatted PDF"
+                >
+                  <FileText className="w-4 h-4 mr-1.5" />
+                  <span>Export to PDF</span>
+                </button>
+              </>
+            )}
+
+            {activeTab === 'bs' && (
+              <>
+                <button
+                  onClick={handleExportBsExcel}
+                  className="inline-flex items-center px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                  title="Export Balance Sheet to Microsoft Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-4 h-4 mr-1.5" />
+                  <span>Export to Excel (.xlsx)</span>
+                </button>
+
+                <button
+                  onClick={handleExportBsPdf}
+                  className="inline-flex items-center px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                  title="Export Balance Sheet to beautifully formatted PDF"
+                >
+                  <FileText className="w-4 h-4 mr-1.5" />
+                  <span>Export to PDF</span>
+                </button>
+              </>
             )}
 
             {activeTab === 'gst' && (
-              <button
-                onClick={handleExportGstSalesRegister}
-                className="inline-flex items-center px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold shadow-xs transition"
-              >
-                <Download className="w-3.5 h-3.5 mr-1.5" />
-                Export GSTR-1 CSV
-              </button>
+              <>
+                <button
+                  onClick={handleExportGstExcel}
+                  className="inline-flex items-center px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                  title="Export GST Summary & GSTR-1 Register to Microsoft Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-4 h-4 mr-1.5" />
+                  <span>Export to Excel (.xlsx)</span>
+                </button>
+
+                <button
+                  onClick={handleExportGstSalesRegister}
+                  className="inline-flex items-center px-3 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                  title="Export GSTR-1 Sales Register to CSV file"
+                >
+                  <Download className="w-4 h-4 mr-1.5" />
+                  <span>Export GSTR-1 CSV</span>
+                </button>
+
+                <button
+                  onClick={handleExportGstPdf}
+                  className="inline-flex items-center px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                  title="Export GST Summary & GSTR-1 Register to beautifully formatted PDF"
+                >
+                  <FileText className="w-4 h-4 mr-1.5" />
+                  <span>Export to PDF</span>
+                </button>
+              </>
             )}
           </div>
         </div>
