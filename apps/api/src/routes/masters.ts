@@ -58,7 +58,27 @@ partiesRoute.post('/', requirePermission('customers', 'create'), async (c) => {
   const user = c.get('user');
   const isSuperAdmin = user.role === 'super_admin';
   const body = await c.req.json();
-  const parsed = createPartySchema.safeParse(body);
+  const normalizedBody = {
+    ...body,
+    name: (body.retailer_name || body.retailerName || body.name || '').trim(),
+    distributorCode: body.distributor_code || body.distributorCode || null,
+    retailerCode: body.retailer_code || body.retailerCode || null,
+    retailerName: body.retailer_name || body.retailerName || body.name || null,
+    address1: body.address_1 || body.address1 || body.address || null,
+    mobileNumber: body.mobile_number || body.mobileNumber || body.phone || null,
+    phone: body.mobile_number || body.mobileNumber || body.phone || null,
+    address: body.address_1 || body.address1 || body.address || null,
+    gstNo: body.gst_no || body.gstNo || body.gstin || null,
+    gstin: body.gst_no || body.gstNo || body.gstin || null,
+    tinLocationName: body.tin_location_name || body.tinLocationName || null,
+    panNo: body.pan_no || body.panNo || null,
+    dlNumber: body.dl_number || body.dlNumber || null,
+    dlExpiryDate: body.dl_expiry_date || body.dlExpiryDate || null,
+    latitude: body.latitude !== undefined && body.latitude !== null ? String(body.latitude) : null,
+    longitude: body.longitude !== undefined && body.longitude !== null ? String(body.longitude) : null,
+  };
+
+  const parsed = createPartySchema.safeParse(normalizedBody);
   if (!parsed.success) {
     return c.json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid party data', details: parsed.error.format() } }, 400);
   }
@@ -101,8 +121,40 @@ partiesRoute.put('/:id', async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Party not found' } }, 404);
   }
 
-  if (body.name !== undefined) party.name = body.name.trim();
-  if (body.gstin !== undefined) party.gstin = body.gstin ? body.gstin.trim().toUpperCase() : null;
+  if (body.name !== undefined || body.retailer_name !== undefined) {
+    party.name = (body.retailer_name || body.name || '').trim();
+  }
+  if (body.retailer_code !== undefined || body.retailerCode !== undefined) {
+    party.retailerCode = body.retailer_code || body.retailerCode || null;
+  }
+  if (body.distributor_code !== undefined || body.distributorCode !== undefined) {
+    party.distributorCode = body.distributor_code || body.distributorCode || null;
+  }
+  if (body.address_1 !== undefined || body.address1 !== undefined) {
+    party.address1 = body.address_1 || body.address1 || null;
+  }
+  if (body.mobile_number !== undefined || body.mobileNumber !== undefined) {
+    party.mobileNumber = body.mobile_number || body.mobileNumber || null;
+  }
+  if (body.latitude !== undefined) party.latitude = body.latitude ? String(body.latitude) : null;
+  if (body.longitude !== undefined) party.longitude = body.longitude ? String(body.longitude) : null;
+  if (body.tin_location_name !== undefined || body.tinLocationName !== undefined) {
+    party.tinLocationName = body.tin_location_name || body.tinLocationName || null;
+  }
+  if (body.pan_no !== undefined || body.panNo !== undefined) {
+    party.panNo = body.pan_no || body.panNo || null;
+  }
+  if (body.dl_number !== undefined || body.dlNumber !== undefined) {
+    party.dlNumber = body.dl_number || body.dlNumber || null;
+  }
+  if (body.dl_expiry_date !== undefined || body.dlExpiryDate !== undefined) {
+    party.dlExpiryDate = body.dl_expiry_date || body.dlExpiryDate || null;
+  }
+  if (body.gst_no !== undefined || body.gstin !== undefined) {
+    const g = body.gst_no || body.gstin;
+    party.gstin = g ? g.trim().toUpperCase() : null;
+    party.gstNo = party.gstin;
+  }
   if (body.phone !== undefined) party.phone = body.phone ? body.phone.trim() : null;
   if (body.email !== undefined) party.email = body.email ? body.email.trim() : null;
   if (body.address !== undefined) party.address = body.address ? body.address.trim() : null;
@@ -174,7 +226,34 @@ itemsRoute.post('/', requirePermission('items', 'create'), async (c) => {
   const user = c.get('user');
   const isSuperAdmin = user.role === 'super_admin';
   const body = await c.req.json();
-  const parsed = createItemSchema.safeParse(body);
+
+  const salePaise = body.rlp !== undefined && body.rlp !== null
+    ? Math.round(Number(body.rlp))
+    : (body.salePrice !== undefined && body.salePrice !== null ? Math.round(Number(body.salePrice)) : 0);
+
+  const normalizedBody = {
+    ...body,
+    name: (body.sku_name || body.skuName || body.name || '').trim(),
+    company: body.company || null,
+    category: body.category || null,
+    skuCode: body.sku_code || body.skuCode || null,
+    skuName: body.sku_name || body.skuName || body.name || null,
+    productBatch: body.product_batch || body.productBatch || null,
+    mrp: body.mrp !== undefined && body.mrp !== null ? Math.round(Number(body.mrp)) : null,
+    rlp: salePaise,
+    upc: body.upc || null,
+    hsnCode: body.hsn_code || body.hsnCode || body.hsnSac || null,
+    hsnSac: body.hsn_code || body.hsnCode || body.hsnSac || null,
+    expiryDate: body.expiry_date || body.expiryDate || null,
+    eanCode: body.ean_code || body.eanCode || null,
+    unit: (body.Unit || body.unit || 'PCS').trim().toUpperCase(),
+    salePrice: salePaise,
+    purchasePrice: body.purchasePrice !== undefined && body.purchasePrice !== null ? Math.round(Number(body.purchasePrice)) : 0,
+    gstRate: Number(body.GSTRatePercent ?? body.gstRate ?? 0),
+    stockQty: Number(body.OpeningStockQty ?? body.stockQty ?? 0),
+  };
+
+  const parsed = createItemSchema.safeParse(normalizedBody);
   if (!parsed.success) {
     return c.json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid item data', details: parsed.error.format() } }, 400);
   }
@@ -216,13 +295,48 @@ itemsRoute.put('/:id', async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Item not found' } }, 404);
   }
 
-  if (body.name !== undefined) item.name = body.name.trim();
-  if (body.hsnSac !== undefined) item.hsnSac = body.hsnSac ? body.hsnSac.trim() : null;
-  if (body.unit !== undefined) item.unit = body.unit.trim().toUpperCase() || 'PCS';
-  if (body.salePrice !== undefined) item.salePrice = Math.round(Number(body.salePrice));
+  if (body.name !== undefined || body.sku_name !== undefined) {
+    item.name = (body.sku_name || body.name || '').trim();
+    item.skuName = item.name;
+  }
+  if (body.sku_code !== undefined || body.skuCode !== undefined) {
+    item.skuCode = body.sku_code || body.skuCode || null;
+  }
+  if (body.company !== undefined) item.company = body.company || null;
+  if (body.category !== undefined) item.category = body.category || null;
+  if (body.product_batch !== undefined || body.productBatch !== undefined) {
+    item.productBatch = body.product_batch || body.productBatch || null;
+  }
+  if (body.mrp !== undefined) {
+    item.mrp = body.mrp !== null ? Math.round(Number(body.mrp)) : null;
+  }
+  if (body.rlp !== undefined || body.salePrice !== undefined) {
+    const val = body.rlp !== undefined ? body.rlp : body.salePrice;
+    item.rlp = val !== null ? Math.round(Number(val)) : 0;
+    item.salePrice = item.rlp;
+  }
+  if (body.upc !== undefined) item.upc = body.upc || null;
+  if (body.hsn_code !== undefined || body.hsnSac !== undefined || body.hsnCode !== undefined) {
+    const h = body.hsn_code || body.hsnCode || body.hsnSac;
+    item.hsnCode = h ? h.trim() : null;
+    item.hsnSac = item.hsnCode;
+  }
+  if (body.expiry_date !== undefined || body.expiryDate !== undefined) {
+    item.expiryDate = body.expiry_date || body.expiryDate || null;
+  }
+  if (body.ean_code !== undefined || body.eanCode !== undefined) {
+    item.eanCode = body.ean_code || body.eanCode || null;
+  }
+  if (body.unit !== undefined || body.Unit !== undefined) {
+    item.unit = (body.Unit || body.unit || 'PCS').trim().toUpperCase();
+  }
   if (body.purchasePrice !== undefined) item.purchasePrice = Math.round(Number(body.purchasePrice));
-  if (body.gstRate !== undefined) item.gstRate = Number(body.gstRate);
-  if (body.stockQty !== undefined) item.stockQty = Number(body.stockQty);
+  if (body.gstRate !== undefined || body.GSTRatePercent !== undefined) {
+    item.gstRate = Number(body.GSTRatePercent ?? body.gstRate ?? 0);
+  }
+  if (body.stockQty !== undefined || body.OpeningStockQty !== undefined) {
+    item.stockQty = Number(body.OpeningStockQty ?? body.stockQty ?? 0);
+  }
   if (body.isActive !== undefined) item.isActive = Boolean(body.isActive);
   if (isSuperAdmin && body.businessId) item.businessId = body.businessId;
 

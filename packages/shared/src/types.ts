@@ -48,10 +48,21 @@ export interface Party {
   id: string;
   businessId: string;
   kind: 'customer' | 'vendor' | 'both';
-  name: string;
-  gstin?: string | null;
+  name: string; // retailer_name
+  distributorCode?: string | null;
+  retailerCode?: string | null;
+  address1?: string | null; // address_1
+  mobileNumber?: string | null; // mobile_number
   phone?: string | null;
   email?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
+  gstNo?: string | null; // gst_no
+  gstin?: string | null;
+  tinLocationName?: string | null; // tin_location_name
+  panNo?: string | null; // pan_no
+  dlNumber?: string | null; // dl_number
+  dlExpiryDate?: string | null; // dl_expiry_date
   address?: string | null;
   creditDays: number;
   openingBalance: number; // in paise
@@ -62,14 +73,25 @@ export interface Party {
 export interface Item {
   id: string;
   businessId: string;
-  name: string;
+  name: string; // sku_name
+  company?: string | null; // company
+  category?: string | null; // category
+  skuCode?: string | null; // sku_code
+  skuName?: string | null; // sku_name alias
+  productBatch?: string | null; // product_batch
+  mrp?: number | null; // mrp in paise
+  rlp?: number | null; // rlp (Retailer Landing Price) in paise
+  upc?: string | null; // upc
+  hsnCode?: string | null; // hsn_code
   hsnSac?: string | null;
-  unit: string;
+  expiryDate?: string | null; // expiry_date (YYYY-MM-DD)
+  eanCode?: string | null; // ean_code
+  unit: string; // Unit (KG, PCS, BOX, etc.)
   salePrice: number; // paise
   purchasePrice: number; // paise
-  gstRate: number;
+  gstRate: number; // GSTRatePercent
   trackStock: boolean;
-  stockQty: number;
+  stockQty: number; // OpeningStockQty
   isActive?: boolean;
 }
 

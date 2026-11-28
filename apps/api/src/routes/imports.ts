@@ -22,15 +22,7 @@ imports.post('/parties', async (c) => {
   const businessId = c.get('businessId');
   const body = await c.req.json<{
     kind: 'customer' | 'vendor' | 'both';
-    records: Array<{
-      name: string;
-      gstin?: string;
-      phone?: string;
-      email?: string;
-      address?: string;
-      creditDays?: number;
-      openingBalance?: number; // in rupees
-    }>;
+    records: Array<any>;
   }>();
 
   if (!body.records || !Array.isArray(body.records)) {
@@ -39,18 +31,47 @@ imports.post('/parties', async (c) => {
 
   const inserted: Party[] = [];
   for (const r of body.records) {
-    if (!r.name || !r.name.trim()) continue;
-    const openingBalancePaise = r.openingBalance ? Math.round(Number(r.openingBalance) * 100) : 0;
+    const rawName = r.retailer_name || r.retailerName || r.name || r.Name || r.PartyName || '';
+    if (!rawName || !rawName.trim()) continue;
+
+    const distCode = r.distributor_code || r.distributorCode || null;
+    const retCode = r.retailer_code || r.retailerCode || null;
+    const addr1 = r.address_1 || r.address1 || r.address || r.Address || null;
+    const mobile = r.mobile_number || r.mobileNumber || r.phone || r.Phone || null;
+    const email = r.email || r.Email || null;
+    const lat = r.latitude !== undefined && r.latitude !== null ? String(r.latitude) : null;
+    const lon = r.longitude !== undefined && r.longitude !== null ? String(r.longitude) : null;
+    const gst = r.gst_no || r.gstNo || r.gstin || r.GSTIN || null;
+    const tinLoc = r.tin_location_name || r.tinLocationName || null;
+    const pan = r.pan_no || r.panNo || (gst && gst.length >= 12 ? gst.substring(2, 12) : null);
+    const dl = r.dl_number || r.dlNumber || null;
+    const dlExp = r.dl_expiry_date || r.dlExpiryDate || null;
+
+    const openingBalancePaise = (r.OpeningBalanceRupees ?? r.openingBalance ?? r.opening_balance)
+      ? Math.round(Number(r.OpeningBalanceRupees ?? r.openingBalance ?? r.opening_balance) * 100)
+      : 0;
+
     const newParty: Party = {
       id: crypto.randomUUID(),
       businessId,
       kind: body.kind || 'customer',
-      name: r.name.trim(),
-      gstin: r.gstin ? r.gstin.trim().toUpperCase() : null,
-      phone: r.phone ? r.phone.trim() : null,
-      email: r.email ? r.email.trim() : null,
-      address: r.address ? r.address.trim() : null,
-      creditDays: Number(r.creditDays) || 30,
+      name: rawName.trim(),
+      distributorCode: distCode ? String(distCode).trim() : null,
+      retailerCode: retCode ? String(retCode).trim() : null,
+      address1: addr1 ? String(addr1).trim() : null,
+      address: addr1 ? String(addr1).trim() : null,
+      mobileNumber: mobile ? String(mobile).trim() : null,
+      phone: mobile ? String(mobile).trim() : null,
+      email: email ? String(email).trim() : null,
+      latitude: lat,
+      longitude: lon,
+      gstNo: gst ? String(gst).trim().toUpperCase() : null,
+      gstin: gst ? String(gst).trim().toUpperCase() : null,
+      tinLocationName: tinLoc ? String(tinLoc).trim() : null,
+      panNo: pan ? String(pan).trim().toUpperCase() : null,
+      dlNumber: dl ? String(dl).trim() : null,
+      dlExpiryDate: dlExp ? String(dlExp).trim() : null,
+      creditDays: Number(r.CreditDays ?? r.creditDays ?? r.credit_days) || 30,
       openingBalance: openingBalancePaise,
       currentBalance: openingBalancePaise,
       isActive: true,
@@ -73,16 +94,7 @@ imports.post('/parties', async (c) => {
 imports.post('/items', async (c) => {
   const businessId = c.get('businessId');
   const body = await c.req.json<{
-    records: Array<{
-      name: string;
-      hsnSac?: string;
-      unit?: string;
-      salePrice?: number; // rupees
-      purchasePrice?: number; // rupees
-      gstRate?: number;
-      trackStock?: boolean;
-      stockQty?: number;
-    }>;
+    records: Array<any>;
   }>();
 
   if (!body.records || !Array.isArray(body.records)) {
@@ -91,18 +103,50 @@ imports.post('/items', async (c) => {
 
   const inserted: Item[] = [];
   for (const r of body.records) {
-    if (!r.name || !r.name.trim()) continue;
+    const rawName = r.sku_name || r.skuName || r.name || r.ItemName || '';
+    if (!rawName || !rawName.trim()) continue;
+
+    const company = r.company || r.Company || null;
+    const category = r.category || r.Category || null;
+    const skuCode = r.sku_code || r.skuCode || null;
+    const batch = r.product_batch || r.productBatch || null;
+    const mrpPaise = r.mrp ? Math.round(Number(r.mrp) * 100) : 0;
+    const rlpVal = r.rlp ?? r.SalePriceRupees ?? r.salePrice ?? r.sale_price;
+    const rlpPaise = rlpVal !== undefined && rlpVal !== null ? Math.round(Number(rlpVal) * 100) : 0;
+    const purchasePaise = r.PurchasePriceRupees ?? r.purchasePrice ?? r.purchase_price
+      ? Math.round(Number(r.PurchasePriceRupees ?? r.purchasePrice ?? r.purchase_price) * 100)
+      : 0;
+    const upc = r.upc || r.UPC || null;
+    const hsn = r.hsn_code || r.hsnCode || r.hsnSac || r.HSNSAC || null;
+    const expDate = r.expiry_date || r.expiryDate || null;
+    const ean = r.ean_code || r.eanCode || null;
+    const unit = (r.Unit || r.unit || 'PCS').trim().toUpperCase();
+    const gstRate = Number(r.GSTRatePercent ?? r.gstRate ?? r.gst_rate ?? 0);
+    const stockQty = Number(r.OpeningStockQty ?? r.stockQty ?? r.stock_qty ?? 0);
+
     const newItem: Item = {
       id: crypto.randomUUID(),
       businessId,
-      name: r.name.trim(),
-      hsnSac: r.hsnSac ? r.hsnSac.trim() : null,
-      unit: r.unit?.trim() || 'PCS',
-      salePrice: r.salePrice ? Math.round(Number(r.salePrice) * 100) : 0,
-      purchasePrice: r.purchasePrice ? Math.round(Number(r.purchasePrice) * 100) : 0,
-      gstRate: Number(r.gstRate) || 18,
-      trackStock: r.trackStock !== false,
-      stockQty: Number(r.stockQty) || 0,
+      name: rawName.trim(),
+      company: company ? String(company).trim() : null,
+      category: category ? String(category).trim() : null,
+      skuCode: skuCode ? String(skuCode).trim() : null,
+      skuName: rawName.trim(),
+      productBatch: batch ? String(batch).trim() : null,
+      mrp: mrpPaise,
+      rlp: rlpPaise,
+      upc: upc ? String(upc).trim() : null,
+      hsnCode: hsn ? String(hsn).trim() : null,
+      hsnSac: hsn ? String(hsn).trim() : null,
+      expiryDate: expDate ? String(expDate).trim() : null,
+      eanCode: ean ? String(ean).trim() : null,
+      unit,
+      salePrice: rlpPaise,
+      purchasePrice: purchasePaise,
+      gstRate,
+      trackStock: true,
+      stockQty,
+      isActive: true,
     };
     memoryStore.items.push(newItem);
     inserted.push(newItem);

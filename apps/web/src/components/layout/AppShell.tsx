@@ -119,7 +119,7 @@ const NAV_GROUPS: NavTreeGroup[] = [
     id: 'inventory',
     label: 'Inventory & Items',
     icon: Package,
-    itemKeys: ['items', 'master_governance', 'bulk_upload'],
+    itemKeys: ['items'],
   },
   {
     id: 'banking',
@@ -137,7 +137,7 @@ const NAV_GROUPS: NavTreeGroup[] = [
     id: 'admin',
     label: 'Settings & Admin',
     icon: Settings,
-    itemKeys: ['dashboard', 'settings', 'users', 'audit_log', 'admin_portal'],
+    itemKeys: ['dashboard', 'settings', 'master_governance', 'bulk_upload', 'users', 'audit_log', 'admin_portal'],
   },
 ];
 

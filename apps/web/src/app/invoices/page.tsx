@@ -241,14 +241,23 @@ export default function InvoicesPage() {
     const item = items.find((i) => i.id === itemId);
     if (!item) return;
     const updated = [...lines];
+    // IvyDMS support: check rlp first (Retailer Landing Price wholesale price), then salePrice, then purchasePrice
+    const itemRate = item.rlp !== undefined && item.rlp !== null && item.rlp > 0
+      ? item.rlp / 100
+      : ((item.salePrice || item.purchasePrice || 0) / 100);
+    const itemHsn = item.hsnCode || item.hsnSac || '';
+    const itemUnit = item.unit || 'KG';
+    const itemGst = item.gstRate !== undefined ? item.gstRate : 0;
+    const itemDisplayName = item.skuName || item.name;
+
     updated[index] = {
       ...updated[index],
       itemId: item.id,
-      description: item.name,
-      hsnSac: item.hsnSac || '',
-      unit: item.unit || 'KG',
-      rateRupees: (item.salePrice || item.purchasePrice || 0) / 100,
-      gstRate: isFixedRate ? 0 : (item.gstRate !== undefined ? item.gstRate : 0),
+      description: itemDisplayName,
+      hsnSac: itemHsn,
+      unit: itemUnit,
+      rateRupees: itemRate > 0 ? (itemRate as any) : updated[index].rateRupees,
+      gstRate: isFixedRate ? 0 : itemGst,
     };
     setLines(updated);
   };
@@ -773,7 +782,17 @@ export default function InvoicesPage() {
                       )}
                       <td className="py-3 px-4 font-mono whitespace-nowrap">{inv.docDate}</td>
                       <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">
-                        {inv.partyName}
+                        <div className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                          {(() => {
+                            const p = parties.find((c) => c.id === inv.partyId);
+                            return p?.retailerCode ? (
+                              <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-1 py-0.5 rounded font-bold">
+                                {p.retailerCode}
+                              </span>
+                            ) : null;
+                          })()}
+                          <span>{inv.partyName}</span>
+                        </div>
                         {inv.partyGstin && (
                           <div className="text-[10px] text-slate-400 font-mono">{inv.partyGstin}</div>
                         )}
@@ -1185,13 +1204,33 @@ export default function InvoicesPage() {
                                 onChange={(e) => handleRowPartySelect(idx, e.target.value)}
                                 className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400 font-medium"
                               >
-                                <option value="">-- Select Customer * --</option>
-                                {parties.map((p) => (
-                                  <option key={p.id} value={p.id}>
-                                    {p.name} {p.gstin ? `(${p.gstin.slice(0, 4)}...)` : ''}
-                                  </option>
-                                ))}
+                                <option value="">-- Select Customer / Retailer * --</option>
+                                {parties.map((p) => {
+                                  const code = p.retailerCode ? `[${p.retailerCode}] ` : '';
+                                  const loc = p.tinLocationName ? ` • ${p.tinLocationName}` : '';
+                                  const tax = p.gstNo || p.gstin ? ` (${(p.gstNo || p.gstin).slice(0, 6)}..)` : '';
+                                  return (
+                                    <option key={p.id} value={p.id}>
+                                      {code}{p.name}{loc}{tax}
+                                    </option>
+                                  );
+                                })}
                               </select>
+                              {(() => {
+                                const p = parties.find((c) => c.id === line.partyId);
+                                if (!p) return null;
+                                return (
+                                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
+                                    {p.retailerCode && (
+                                      <span className="font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-1 rounded">
+                                        {p.retailerCode}
+                                      </span>
+                                    )}
+                                    {p.tinLocationName && <span>📍 {p.tinLocationName}</span>}
+                                    {p.dlNumber && <span className="font-mono">DL: {p.dlNumber}</span>}
+                                  </div>
+                                );
+                              })()}
                             </td>
 
                             {/* 2. Invoice # */}
@@ -1226,23 +1265,30 @@ export default function InvoicesPage() {
                                 {items.length > 0 && (
                                   <select
                                     onChange={(e) => handleItemSelect(idx, e.target.value)}
-                                    className="w-full px-2 py-1 text-[11px] border border-slate-200 dark:border-slate-700 rounded-md bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    className="w-full px-2 py-1 text-[11px] border border-slate-200 dark:border-slate-700 rounded-md bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium"
                                     defaultValue=""
                                   >
                                     <option value="" disabled>
-                                      -- Select master item --
+                                      -- Select SKU / Master Item --
                                     </option>
-                                    {items.map((i) => (
-                                      <option key={i.id} value={i.id}>
-                                        {i.name} ({i.unit || 'KG'})
-                                      </option>
-                                    ))}
+                                    {items.map((i) => {
+                                      const code = i.skuCode ? `[${i.skuCode}] ` : '';
+                                      const name = i.skuName || i.name;
+                                      const comp = i.company ? ` • ${i.company}` : '';
+                                      const rlpRate = i.rlp ? ` • RLP: ₹${(i.rlp / 100).toFixed(2)}` : (i.salePrice ? ` • ₹${(i.salePrice / 100).toFixed(2)}` : '');
+                                      const unit = i.unit ? ` / ${i.unit}` : '';
+                                      return (
+                                        <option key={i.id} value={i.id}>
+                                          {code}{name}{comp}{rlpRate}{unit}
+                                        </option>
+                                      );
+                                    })}
                                   </select>
                                 )}
                                 <input
                                   type="text"
                                   required
-                                  placeholder="Item name / Mankda / Description *"
+                                  placeholder="SKU Name / Description *"
                                   value={line.description}
                                   onChange={(e) => {
                                     const upd = [...lines];
@@ -1251,6 +1297,27 @@ export default function InvoicesPage() {
                                   }}
                                   className="w-full px-2 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
                                 />
+                                {(() => {
+                                  const it = items.find((i) => i.id === line.itemId);
+                                  if (!it) return null;
+                                  const details = [
+                                    it.company && `Co: ${it.company}`,
+                                    it.category && `Cat: ${it.category}`,
+                                    it.productBatch && `Batch: ${it.productBatch}`,
+                                    it.mrp && `MRP: ₹${(it.mrp / 100).toFixed(2)}`,
+                                    it.expiryDate && `Exp: ${it.expiryDate}`,
+                                  ].filter(Boolean);
+                                  if (details.length === 0) return null;
+                                  return (
+                                    <div className="flex flex-wrap items-center gap-1 text-[9px] text-slate-500 dark:text-slate-400 font-mono">
+                                      {details.map((d, di) => (
+                                        <span key={di} className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                                          {d}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             </td>
 

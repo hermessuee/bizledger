@@ -5,11 +5,23 @@ import { isValidGSTIN } from '../gst';
 export const createPartySchema = z.object({
   kind: z.enum(['customer', 'vendor', 'both']),
   name: z.string().min(1, 'Party name is required'),
+  distributorCode: z.string().optional().nullable(),
+  retailerCode: z.string().optional().nullable(),
+  retailerName: z.string().optional().nullable(),
+  address1: z.string().optional().nullable(),
+  mobileNumber: z.string().optional().nullable(),
+  latitude: z.string().optional().nullable(),
+  longitude: z.string().optional().nullable(),
+  gstNo: z.string().optional().nullable(),
   gstin: z
     .string()
     .optional()
     .nullable()
     .refine((val) => !val || isValidGSTIN(val), { message: 'Invalid GSTIN format' }),
+  tinLocationName: z.string().optional().nullable(),
+  panNo: z.string().optional().nullable(),
+  dlNumber: z.string().optional().nullable(),
+  dlExpiryDate: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
   email: z.string().email().optional().nullable().or(z.literal('')),
   address: z.string().optional().nullable(),
@@ -21,7 +33,18 @@ export type CreatePartyInput = z.infer<typeof createPartySchema>;
 
 export const createItemSchema = z.object({
   name: z.string().min(1, 'Item name is required'),
+  company: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
+  skuCode: z.string().optional().nullable(),
+  skuName: z.string().optional().nullable(),
+  productBatch: z.string().optional().nullable(),
+  mrp: z.number().int().min(0).optional().nullable(), // in paise
+  rlp: z.number().int().min(0).optional().nullable(), // in paise
+  upc: z.string().optional().nullable(),
+  hsnCode: z.string().optional().nullable(),
   hsnSac: z.string().optional().nullable(),
+  expiryDate: z.string().optional().nullable(),
+  eanCode: z.string().optional().nullable(),
   unit: z.string().default('Nos'),
   salePrice: z.number().int().min(0).default(0), // in paise
   purchasePrice: z.number().int().min(0).default(0), // in paise
