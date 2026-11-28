@@ -171,10 +171,10 @@ export default function ReportsPage() {
       return res.slice(0, 16);
     };
 
-    const distName = (dist?.name || 'DISTRIBUTOR FIRM').toUpperCase();
-    const gstin = dist?.gstin || 'Unregistered';
-    const state = `${dist?.stateCode || '32'} - Kerala`;
-    const addr = dist?.address || 'Kerala';
+    const distName = (dist?.name || business?.name || 'DISTRIBUTOR FIRM').toUpperCase();
+    const gstin = dist?.gstin?.trim() || business?.gstin?.trim() || 'Unregistered';
+    const state = `${dist?.stateCode || business?.stateCode || '32'} - Kerala`;
+    const addr = dist?.address || business?.address || 'Kerala';
 
     const now = new Date();
     const genTimeStr = `${now.toLocaleDateString('en-GB')}, ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).toLowerCase()}`;
@@ -279,10 +279,10 @@ export default function ReportsPage() {
       { width: 22 }, // Net Balance
     ];
 
-    const distName = (dist?.name || 'DISTRIBUTOR FIRM').toUpperCase();
-    const gstin = dist?.gstin || 'Unregistered';
-    const state = `${dist?.stateCode || '32'} - Kerala`;
-    const addr = dist?.address || 'Kerala';
+    const distName = (dist?.name || business?.name || 'DISTRIBUTOR FIRM').toUpperCase();
+    const gstin = dist?.gstin?.trim() || business?.gstin?.trim() || 'Unregistered';
+    const state = `${dist?.stateCode || business?.stateCode || '32'} - Kerala`;
+    const addr = dist?.address || business?.address || 'Kerala';
 
     const now = new Date();
     const genTimeStr = `${now.toLocaleDateString('en-GB')}, ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).toLowerCase()}`;
@@ -504,9 +504,9 @@ export default function ReportsPage() {
 
     downloadDetailedTradingPdf({
       distributor: {
-        name: dist?.name || business?.name || 'Apex Trading & Services Pvt Ltd',
-        gstin: dist?.gstin || business?.gstin || '32AAPCA1234M1Z5',
-        address: dist?.address || business?.address || 'MG Road, Ernakulam, Kerala 682016',
+        name: dist?.name || business?.name || 'Distributor Firm',
+        gstin: dist?.gstin?.trim() || business?.gstin?.trim() || 'Unregistered',
+        address: dist?.address || business?.address || 'Kerala',
         stateCode: dist?.stateCode || business?.stateCode || '32',
       },
       filters: {
@@ -767,12 +767,19 @@ export default function ReportsPage() {
                     </span>
                   </div>
                   <h2 className="text-xl sm:text-2xl font-black mt-1 text-white tracking-tight">
-                    {currentDistributor?.name || 'Apex Trading & Services Pvt Ltd'}
+                    {currentDistributor?.name || business?.name || 'Distributor Firm'}
                   </h2>
                   <p className="text-xs text-slate-300 mt-0.5">
-                    GSTIN: <span className="font-mono font-bold text-amber-300">{currentDistributor?.gstin || '32AAPCA1234M1Z5'}</span>
+                    GSTIN:{' '}
+                    {currentDistributor?.gstin?.trim() || business?.gstin?.trim() ? (
+                      <span className="font-mono font-bold text-amber-300">
+                        {currentDistributor?.gstin?.trim() || business?.gstin?.trim()}
+                      </span>
+                    ) : (
+                      <span className="font-mono text-slate-400 italic">Not Configured</span>
+                    )}
                     {' '}&bull;{' '}
-                    <span>{currentDistributor?.address || 'Ernakulam, Kerala 682016'}</span>
+                    <span>{currentDistributor?.address || business?.address || 'Kerala'}</span>
                   </p>
                 </div>
 

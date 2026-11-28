@@ -346,7 +346,7 @@ export function AppShell({
                   </select>
                 </div>
               ) : (
-                <span>{business?.name || 'Apex Trading'}</span>
+                <span>{business?.name || 'Distributor Firm'}</span>
               )}
               <span className="text-slate-400">/</span>
               <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
