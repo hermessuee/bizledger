@@ -43,6 +43,7 @@ import {
   SlidersHorizontal,
   Printer,
   RotateCcw,
+  Percent,
 } from 'lucide-react';
 
 const MENU_ICONS: Record<MenuKey, React.ComponentType<{ className?: string }>> = {
@@ -64,6 +65,7 @@ const MENU_ICONS: Record<MenuKey, React.ComponentType<{ className?: string }>> =
   gst: FileSpreadsheet,
   bulk_upload: UploadCloud,
   master_governance: SlidersHorizontal,
+  discount_settings: Percent,
   admin_portal: ShieldAlert,
   settings: Settings,
   users: Shield,
@@ -89,6 +91,7 @@ const MENU_ROUTES: Record<MenuKey, string> = {
   gst: '/gst',
   bulk_upload: '/bulk-upload',
   master_governance: '/masters',
+  discount_settings: '/discount-settings',
   admin_portal: '/super-admin',
   settings: '/settings',
   users: '/users',
@@ -137,7 +140,7 @@ const NAV_GROUPS: NavTreeGroup[] = [
     id: 'admin',
     label: 'Settings & Admin',
     icon: Settings,
-    itemKeys: ['dashboard', 'settings', 'master_governance', 'bulk_upload', 'users', 'audit_log', 'admin_portal'],
+    itemKeys: ['dashboard', 'settings', 'discount_settings', 'master_governance', 'bulk_upload', 'users', 'audit_log', 'admin_portal'],
   },
 ];
 

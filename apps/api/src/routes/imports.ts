@@ -35,6 +35,7 @@ imports.post('/parties', async (c) => {
     if (!rawName || !rawName.trim()) continue;
 
     const distCode = r.distributor_code || r.distributorCode || null;
+    const distName = r.distributor_name || r.distributorName || r.distributor_code || r.distributorCode || null;
     const retCode = r.retailer_code || r.retailerCode || null;
     const addr1 = r.address_1 || r.address1 || r.address || r.Address || null;
     const mobile = r.mobile_number || r.mobileNumber || r.phone || r.Phone || null;
@@ -46,6 +47,7 @@ imports.post('/parties', async (c) => {
     const pan = r.pan_no || r.panNo || (gst && gst.length >= 12 ? gst.substring(2, 12) : null);
     const dl = r.dl_number || r.dlNumber || null;
     const dlExp = r.dl_expiry_date || r.dlExpiryDate || null;
+    const discPct = Number(r.discount_percentage ?? r.discountPercentage ?? 0);
 
     const openingBalancePaise = (r.OpeningBalanceRupees ?? r.openingBalance ?? r.opening_balance)
       ? Math.round(Number(r.OpeningBalanceRupees ?? r.openingBalance ?? r.opening_balance) * 100)
@@ -57,6 +59,7 @@ imports.post('/parties', async (c) => {
       kind: body.kind || 'customer',
       name: rawName.trim(),
       distributorCode: distCode ? String(distCode).trim() : null,
+      distributorName: distName ? String(distName).trim() : null,
       retailerCode: retCode ? String(retCode).trim() : null,
       address1: addr1 ? String(addr1).trim() : null,
       address: addr1 ? String(addr1).trim() : null,
@@ -74,6 +77,7 @@ imports.post('/parties', async (c) => {
       creditDays: Number(r.CreditDays ?? r.creditDays ?? r.credit_days) || 30,
       openingBalance: openingBalancePaise,
       currentBalance: openingBalancePaise,
+      discountPercentage: discPct,
       isActive: true,
     };
     memoryStore.parties.push(newParty);
@@ -144,6 +148,7 @@ imports.post('/items', async (c) => {
       salePrice: rlpPaise,
       purchasePrice: purchasePaise,
       gstRate,
+      discountPercentage: Number(r.discount_percentage ?? r.discountPercentage ?? 0),
       trackStock: true,
       stockQty,
       isActive: true,

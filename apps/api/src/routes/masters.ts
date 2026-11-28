@@ -62,6 +62,7 @@ partiesRoute.post('/', requirePermission('customers', 'create'), async (c) => {
     ...body,
     name: (body.retailer_name || body.retailerName || body.name || '').trim(),
     distributorCode: body.distributor_code || body.distributorCode || null,
+    distributorName: body.distributor_name || body.distributorName || null,
     retailerCode: body.retailer_code || body.retailerCode || null,
     retailerName: body.retailer_name || body.retailerName || body.name || null,
     address1: body.address_1 || body.address1 || body.address || null,
@@ -76,6 +77,7 @@ partiesRoute.post('/', requirePermission('customers', 'create'), async (c) => {
     dlExpiryDate: body.dl_expiry_date || body.dlExpiryDate || null,
     latitude: body.latitude !== undefined && body.latitude !== null ? String(body.latitude) : null,
     longitude: body.longitude !== undefined && body.longitude !== null ? String(body.longitude) : null,
+    discountPercentage: body.discount_percentage !== undefined ? Number(body.discount_percentage) : (body.discountPercentage !== undefined ? Number(body.discountPercentage) : 0),
   };
 
   const parsed = createPartySchema.safeParse(normalizedBody);
@@ -130,6 +132,12 @@ partiesRoute.put('/:id', async (c) => {
   if (body.distributor_code !== undefined || body.distributorCode !== undefined) {
     party.distributorCode = body.distributor_code || body.distributorCode || null;
   }
+  if (body.distributor_name !== undefined || body.distributorName !== undefined) {
+    party.distributorName = body.distributor_name || body.distributorName || null;
+  }
+  if (body.discount_percentage !== undefined || body.discountPercentage !== undefined) {
+    party.discountPercentage = Number(body.discount_percentage ?? body.discountPercentage ?? 0);
+  }
   if (body.address_1 !== undefined || body.address1 !== undefined) {
     party.address1 = body.address_1 || body.address1 || null;
   }
@@ -172,6 +180,26 @@ partiesRoute.put('/:id', async (c) => {
   });
 
   return c.json({ success: true, party });
+});
+
+// POST /parties/batch/discounts - Bulk update customer discount percentages
+partiesRoute.post('/batch/discounts', async (c) => {
+  const businessId = c.get('businessId');
+  const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
+  const body = await c.req.json<{ updates: Array<{ id: string; discountPercentage: number }> }>();
+  if (!body.updates || !Array.isArray(body.updates)) {
+    return c.json({ error: { code: 'VALIDATION_ERROR', message: 'updates array is required' } }, 400);
+  }
+  let count = 0;
+  for (const u of body.updates) {
+    const party = memoryStore.parties.find((p) => p.id === u.id && (isSuperAdmin || p.businessId === businessId));
+    if (party) {
+      party.discountPercentage = Math.max(0, Math.min(100, Number(u.discountPercentage) || 0));
+      count++;
+    }
+  }
+  return c.json({ success: true, count });
 });
 
 // DELETE /parties/:id - Delete party (Super Admin master authority)
@@ -250,6 +278,7 @@ itemsRoute.post('/', requirePermission('items', 'create'), async (c) => {
     salePrice: salePaise,
     purchasePrice: body.purchasePrice !== undefined && body.purchasePrice !== null ? Math.round(Number(body.purchasePrice)) : 0,
     gstRate: Number(body.GSTRatePercent ?? body.gstRate ?? 0),
+    discountPercentage: body.discount_percentage !== undefined ? Number(body.discount_percentage) : (body.discountPercentage !== undefined ? Number(body.discountPercentage) : 0),
     stockQty: Number(body.OpeningStockQty ?? body.stockQty ?? 0),
   };
 
@@ -337,6 +366,9 @@ itemsRoute.put('/:id', async (c) => {
   if (body.stockQty !== undefined || body.OpeningStockQty !== undefined) {
     item.stockQty = Number(body.OpeningStockQty ?? body.stockQty ?? 0);
   }
+  if (body.discount_percentage !== undefined || body.discountPercentage !== undefined) {
+    item.discountPercentage = Number(body.discount_percentage ?? body.discountPercentage ?? 0);
+  }
   if (body.isActive !== undefined) item.isActive = Boolean(body.isActive);
   if (isSuperAdmin && body.businessId) item.businessId = body.businessId;
 
@@ -350,6 +382,26 @@ itemsRoute.put('/:id', async (c) => {
   });
 
   return c.json({ success: true, item });
+});
+
+// POST /items/batch/discounts - Bulk update item discount percentages
+itemsRoute.post('/batch/discounts', async (c) => {
+  const businessId = c.get('businessId');
+  const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
+  const body = await c.req.json<{ updates: Array<{ id: string; discountPercentage: number }> }>();
+  if (!body.updates || !Array.isArray(body.updates)) {
+    return c.json({ error: { code: 'VALIDATION_ERROR', message: 'updates array is required' } }, 400);
+  }
+  let count = 0;
+  for (const u of body.updates) {
+    const item = memoryStore.items.find((i) => i.id === u.id && (isSuperAdmin || i.businessId === businessId));
+    if (item) {
+      item.discountPercentage = Math.max(0, Math.min(100, Number(u.discountPercentage) || 0));
+      count++;
+    }
+  }
+  return c.json({ success: true, count });
 });
 
 // DELETE /items/:id - Delete item (Super Admin master authority)

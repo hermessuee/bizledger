@@ -6,6 +6,7 @@ export const createPartySchema = z.object({
   kind: z.enum(['customer', 'vendor', 'both']),
   name: z.string().min(1, 'Party name is required'),
   distributorCode: z.string().optional().nullable(),
+  distributorName: z.string().optional().nullable(),
   retailerCode: z.string().optional().nullable(),
   retailerName: z.string().optional().nullable(),
   address1: z.string().optional().nullable(),
@@ -27,6 +28,7 @@ export const createPartySchema = z.object({
   address: z.string().optional().nullable(),
   creditDays: z.number().int().min(0).default(0),
   openingBalance: z.number().int().default(0), // in paise
+  discountPercentage: z.number().min(0).max(100).optional().nullable(),
   isActive: z.boolean().default(true),
 });
 export type CreatePartyInput = z.infer<typeof createPartySchema>;
@@ -49,6 +51,7 @@ export const createItemSchema = z.object({
   salePrice: z.number().int().min(0).default(0), // in paise
   purchasePrice: z.number().int().min(0).default(0), // in paise
   gstRate: z.number().min(0).max(100).default(0),
+  discountPercentage: z.number().min(0).max(100).optional().nullable(),
   trackStock: z.boolean().default(false),
   stockQty: z.number().default(0),
 });
@@ -70,6 +73,7 @@ export const documentLineSchema = z.object({
   qty: z.number().positive('Quantity must be greater than 0'),
   rate: z.number().int().nonnegative('Rate must be non-negative'), // in paise
   discount: z.number().int().nonnegative().default(0), // in paise
+  discountPercent: z.number().min(0).max(100).optional().nullable(),
   gstRate: z.number().min(0).max(100).default(0),
   cgst: z.number().int().default(0),
   sgst: z.number().int().default(0),

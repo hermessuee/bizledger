@@ -50,6 +50,7 @@ export interface Party {
   kind: 'customer' | 'vendor' | 'both';
   name: string; // retailer_name
   distributorCode?: string | null;
+  distributorName?: string | null;
   retailerCode?: string | null;
   address1?: string | null; // address_1
   mobileNumber?: string | null; // mobile_number
@@ -67,6 +68,7 @@ export interface Party {
   creditDays: number;
   openingBalance: number; // in paise
   currentBalance?: number; // in paise
+  discountPercentage?: number | null; // default 0
   isActive: boolean;
 }
 
@@ -90,6 +92,7 @@ export interface Item {
   salePrice: number; // paise
   purchasePrice: number; // paise
   gstRate: number; // GSTRatePercent
+  discountPercentage?: number | null; // default 0
   trackStock: boolean;
   stockQty: number; // OpeningStockQty
   isActive?: boolean;

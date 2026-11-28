@@ -26,6 +26,7 @@ export interface InvoicePdfData {
       unit?: string;
       rate: number;
       discount: number;
+      discountPercent?: number;
       gstRate: number;
       cgst: number;
       sgst: number;
@@ -181,8 +182,16 @@ export function generateInvoicePdf(data: InvoicePdfData, docInstance?: jsPDF) {
 
   // Line Items Table (Corporate Black & White Grid)
   const tableRows = inv.lines.map((l, index) => {
-    const taxablePaise = (l.rate * l.qty) - (l.discount || 0);
+    const grossPaise = l.rate * l.qty;
+    const discountPaise = l.discount || 0;
+    const taxablePaise = grossPaise - discountPaise;
     const taxPaise = (l.cgst || 0) + (l.sgst || 0) + (l.igst || 0);
+    const discStr = l.discountPercent !== undefined && l.discountPercent !== null
+      ? `${Number(l.discountPercent)}%`
+      : discountPaise > 0 && grossPaise > 0
+      ? `${((discountPaise / grossPaise) * 100).toFixed(1)}%`
+      : '0%';
+
     return [
       index + 1,
       l.description,
@@ -190,6 +199,7 @@ export function generateInvoicePdf(data: InvoicePdfData, docInstance?: jsPDF) {
       l.qty,
       l.unit || 'PCS',
       formatPaise(l.rate),
+      discStr,
       formatPaise(taxablePaise),
       `${l.gstRate || 0}%`,
       formatPaise(taxPaise),
@@ -206,6 +216,7 @@ export function generateInvoicePdf(data: InvoicePdfData, docInstance?: jsPDF) {
       'Qty',
       'Unit',
       'Rate (Rs)',
+      'Disc %',
       'Taxable Value (Rs)',
       'GST %',
       'Tax Amount (Rs)',
@@ -234,16 +245,17 @@ export function generateInvoicePdf(data: InvoicePdfData, docInstance?: jsPDF) {
       fillColor: [255, 255, 255],
     },
     columnStyles: {
-      0: { cellWidth: 22, halign: 'center' },
-      1: { cellWidth: 152, halign: 'left', fontStyle: 'bold' },
-      2: { cellWidth: 45, halign: 'center' },
-      3: { cellWidth: 35, halign: 'center' },
-      4: { cellWidth: 32, halign: 'center' },
-      5: { cellWidth: 50, halign: 'right' },
-      6: { cellWidth: 58, halign: 'right' },
-      7: { cellWidth: 35, halign: 'center' },
-      8: { cellWidth: 50, halign: 'right' },
-      9: { cellWidth: 60, halign: 'right', fontStyle: 'bold' },
+      0: { cellWidth: 20, halign: 'center' },
+      1: { cellWidth: 140, halign: 'left', fontStyle: 'bold' },
+      2: { cellWidth: 42, halign: 'center' },
+      3: { cellWidth: 32, halign: 'center' },
+      4: { cellWidth: 28, halign: 'center' },
+      5: { cellWidth: 46, halign: 'right' },
+      6: { cellWidth: 36, halign: 'center' },
+      7: { cellWidth: 54, halign: 'right' },
+      8: { cellWidth: 33, halign: 'center' },
+      9: { cellWidth: 48, halign: 'right' },
+      10: { cellWidth: 60, halign: 'right', fontStyle: 'bold' },
     },
     margin: { left: margin, right: margin },
   });
@@ -263,9 +275,13 @@ export function generateInvoicePdf(data: InvoicePdfData, docInstance?: jsPDF) {
   const words = paiseToWords(inv.total);
   doc.text(`Total Invoice Amount in Words: INR ${words} Only`, margin + 10, wordsY + 14, { maxWidth: contentWidth - 20 });
 
+  // Calculate overall discount
+  const totalDiscountPaise = inv.lines.reduce((acc, l) => acc + (l.discount || 0), 0);
+  const grossSubtotalPaise = inv.lines.reduce((acc, l) => acc + (l.rate * l.qty), 0);
+
   // Bottom Summary & Banking Box (Two Columns)
   const bottomY = wordsY + 20;
-  const bottomH = 115;
+  const bottomH = totalDiscountPaise > 0 ? 125 : 115;
   doc.line(margin, bottomY + bottomH, margin + contentWidth, bottomY + bottomH);
   doc.line(dividerX, bottomY, dividerX, bottomY + bottomH);
 
@@ -290,28 +306,42 @@ export function generateInvoicePdf(data: InvoicePdfData, docInstance?: jsPDF) {
   doc.text('3. All disputes are subject to Kerala State judicial jurisdiction only.', margin + 10, bottomY + 102);
 
   // Right Column: Numerical Totals Table
-  const calcRowY = bottomY + 14;
-  doc.setFontSize(8.5);
+  let calcRowY = bottomY + 13;
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
+
+  if (totalDiscountPaise > 0) {
+    doc.text('Gross Amount:', dividerX + 10, calcRowY);
+    doc.text(`Rs. ${formatPaise(grossSubtotalPaise)}`, margin + contentWidth - 10, calcRowY, { align: 'right' });
+    calcRowY += 12;
+
+    doc.text('Trade Discount (-):', dividerX + 10, calcRowY);
+    doc.text(`- Rs. ${formatPaise(totalDiscountPaise)}`, margin + contentWidth - 10, calcRowY, { align: 'right' });
+    calcRowY += 12;
+  }
+
   doc.text('Taxable Subtotal:', dividerX + 10, calcRowY);
   doc.text(`Rs. ${formatPaise(inv.subtotal)}`, margin + contentWidth - 10, calcRowY, { align: 'right' });
+  calcRowY += 12;
 
-  doc.text('Total Tax (GST):', dividerX + 10, calcRowY + 15);
-  doc.text(`Rs. ${formatPaise(inv.taxTotal)}`, margin + contentWidth - 10, calcRowY + 15, { align: 'right' });
+  doc.text('Total Tax (GST):', dividerX + 10, calcRowY);
+  doc.text(`Rs. ${formatPaise(inv.taxTotal)}`, margin + contentWidth - 10, calcRowY, { align: 'right' });
+  calcRowY += 12;
 
   if (inv.roundOff !== 0) {
-    doc.text('Round Off (+/-):', dividerX + 10, calcRowY + 30);
-    doc.text(`Rs. ${formatPaise(inv.roundOff)}`, margin + contentWidth - 10, calcRowY + 30, { align: 'right' });
+    doc.text('Round Off (+/-):', dividerX + 10, calcRowY);
+    doc.text(`Rs. ${formatPaise(inv.roundOff)}`, margin + contentWidth - 10, calcRowY, { align: 'right' });
+    calcRowY += 12;
   }
 
   // Grand Total Highlighted Box (Black & White Clean)
   doc.setLineWidth(1);
   doc.setFillColor(242, 242, 242);
-  doc.rect(dividerX + 5, calcRowY + 42, margin + contentWidth - dividerX - 10, 22, 'FD');
-  doc.setFontSize(10);
+  doc.rect(dividerX + 5, calcRowY + 2, margin + contentWidth - dividerX - 10, 20, 'FD');
+  doc.setFontSize(9.5);
   doc.setFont('helvetica', 'bold');
-  doc.text('GRAND TOTAL:', dividerX + 12, calcRowY + 57);
-  doc.text(`Rs. ${formatPaise(inv.total)}`, margin + contentWidth - 12, calcRowY + 57, { align: 'right' });
+  doc.text('GRAND TOTAL:', dividerX + 12, calcRowY + 16);
+  doc.text(`Rs. ${formatPaise(inv.total)}`, margin + contentWidth - 12, calcRowY + 16, { align: 'right' });
 
   // Signature Block
   const sigY = bottomY + bottomH;

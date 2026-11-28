@@ -45,6 +45,7 @@ interface SalesInvoiceLine {
   unit: string;
   qty: number | string;
   rateRupees: number | string;
+  discountPercent: number | string;
   gstRate: number;
 }
 
@@ -75,6 +76,7 @@ export default function InvoicesPage() {
   const [isFixedRate, setIsFixedRate] = useState(false);
   const [autoFillParty, setAutoFillParty] = useState(true);
   const [autoFillDate, setAutoFillDate] = useState(true);
+  const [autoFillDiscount, setAutoFillDiscount] = useState(true);
 
   // Daybook Line items (default values for Qty and Rate removed as requested)
   const [lines, setLines] = useState<SalesInvoiceLine[]>([
@@ -87,6 +89,7 @@ export default function InvoicesPage() {
       unit: 'KG',
       qty: '',
       rateRupees: '',
+      discountPercent: 0,
       gstRate: 0,
     },
   ]);
@@ -187,15 +190,55 @@ export default function InvoicesPage() {
     }
   };
 
+  // Auto-fill discount toggle in table header
+  const handleToggleAutoFillDiscount = (checked: boolean) => {
+    setAutoFillDiscount(checked);
+    if (checked && lines.length > 1 && lines[0]?.discountPercent !== undefined) {
+      const row0Disc = lines[0].discountPercent;
+      const updated = lines.map((l, i) => {
+        if (i === 0) return l;
+        return { ...l, discountPercent: row0Disc };
+      });
+      setLines(updated);
+    }
+  };
+
+  const handleRowDiscountChange = (idx: number, newDisc: string) => {
+    const oldRow0Disc = lines[0]?.discountPercent;
+    const val = newDisc === '' ? '' : (parseFloat(newDisc) || 0);
+    const updated = [...lines];
+    updated[idx] = {
+      ...updated[idx],
+      discountPercent: val,
+    };
+
+    if (idx === 0 && autoFillDiscount) {
+      for (let i = 1; i < updated.length; i++) {
+        if (!updated[i].discountPercent || updated[i].discountPercent === oldRow0Disc || updated[i].discountPercent === 0) {
+          updated[i] = {
+            ...updated[i],
+            discountPercent: val,
+          };
+        }
+      }
+    }
+
+    setLines(updated);
+  };
+
   // Party select per row
   const handleRowPartySelect = (idx: number, pId: string) => {
     const oldRow0Party = lines[0]?.partyId;
     const selectedParty = parties.find((c) => c.id === pId);
+    const partyDisc = selectedParty?.discountPercentage ? Number(selectedParty.discountPercentage) : 0;
     const updated = [...lines];
     updated[idx] = {
       ...updated[idx],
       partyId: pId,
       description: isFixedRate && selectedParty ? selectedParty.name : updated[idx].description,
+      discountPercent: partyDisc > 0 && (!updated[idx].discountPercent || updated[idx].discountPercent === 0)
+        ? partyDisc
+        : updated[idx].discountPercent,
     };
 
     if (idx === 0 && autoFillParty) {
@@ -205,6 +248,9 @@ export default function InvoicesPage() {
             ...updated[i],
             partyId: pId,
             description: isFixedRate && selectedParty ? selectedParty.name : updated[i].description,
+            discountPercent: autoFillDiscount && partyDisc > 0
+              ? partyDisc
+              : updated[i].discountPercent,
           };
         }
       }
@@ -241,13 +287,14 @@ export default function InvoicesPage() {
     const item = items.find((i) => i.id === itemId);
     if (!item) return;
     const updated = [...lines];
-    // IvyDMS support: check rlp first (Retailer Landing Price wholesale price), then salePrice, then purchasePrice
+    // Wholesale price lookup: check rlp first (Retailer Landing Price), then salePrice, then purchasePrice
     const itemRate = item.rlp !== undefined && item.rlp !== null && item.rlp > 0
       ? item.rlp / 100
       : ((item.salePrice || item.purchasePrice || 0) / 100);
     const itemHsn = item.hsnCode || item.hsnSac || '';
     const itemUnit = item.unit || 'KG';
     const itemGst = item.gstRate !== undefined ? item.gstRate : 0;
+    const itemDisc = item.discountPercentage ? Number(item.discountPercentage) : 0;
     const itemDisplayName = item.skuName || item.name;
 
     updated[index] = {
@@ -257,6 +304,9 @@ export default function InvoicesPage() {
       hsnSac: itemHsn,
       unit: itemUnit,
       rateRupees: itemRate > 0 ? (itemRate as any) : updated[index].rateRupees,
+      discountPercent: (!updated[index].discountPercent || updated[index].discountPercent === 0) && itemDisc > 0
+        ? itemDisc
+        : updated[index].discountPercent,
       gstRate: isFixedRate ? 0 : itemGst,
     };
     setLines(updated);
@@ -267,6 +317,7 @@ export default function InvoicesPage() {
     const row0 = lines[0];
     const newPartyId = autoFillParty && row0?.partyId ? row0.partyId : '';
     const newDate = autoFillDate && row0?.docDate ? row0.docDate : todayDate;
+    const newDisc = autoFillDiscount && row0?.discountPercent !== undefined ? row0.discountPercent : 0;
     const newParty = parties.find((c) => c.id === newPartyId);
 
     setLines([
@@ -281,6 +332,7 @@ export default function InvoicesPage() {
         unit: 'KG',
         qty: '',
         rateRupees: '',
+        discountPercent: newDisc,
         gstRate: isFixedRate ? 0 : 0,
       },
     ]);
@@ -296,15 +348,20 @@ export default function InvoicesPage() {
   const bizState = business?.stateCode || '32';
   const isInterState = (placeOfSupply || defaultKeralaState) !== bizState;
 
+  let computedGrossSubtotal = 0n;
+  let computedDiscountTotal = 0n;
   let computedSubtotal = 0n;
   let computedTaxTotal = 0n;
 
   const computedLines = lines.map((line) => {
     const qty = Number(line.qty) || 0;
     const ratePaise = BigInt(Math.round((Number(line.rateRupees) || 0) * 100));
+    const discPct = Math.max(0, Math.min(100, Number(line.discountPercent) || 0));
 
-    // When isFixedRate is true: Rate entered is line total directly (e.g. Mankda 250 KG @ 1200 => Taxable: ₹1200)
-    const taxablePaise = isFixedRate ? ratePaise : BigInt(Math.round(qty * Number(ratePaise)));
+    // When isFixedRate is true: Rate entered is line total directly (e.g. Mankda 250 KG @ 1200 => Gross: ₹1200)
+    const grossPaise = isFixedRate ? ratePaise : BigInt(Math.round(qty * Number(ratePaise)));
+    const discountPaise = BigInt(Math.round(Number(grossPaise) * (discPct / 100)));
+    const taxablePaise = grossPaise > discountPaise ? grossPaise - discountPaise : 0n;
 
     const taxRes = calculateLineTax({
       taxableAmount: taxablePaise,
@@ -312,6 +369,8 @@ export default function InvoicesPage() {
       isInterState,
     });
 
+    computedGrossSubtotal += grossPaise;
+    computedDiscountTotal += discountPaise;
     computedSubtotal += taxRes.taxableAmount;
     computedTaxTotal += taxRes.totalTax;
 
@@ -321,6 +380,9 @@ export default function InvoicesPage() {
       unit: line.unit || 'KG',
       qty,
       ratePaise: Number(ratePaise),
+      grossPaise: Number(grossPaise),
+      discountPaise: Number(discountPaise),
+      discountPercent: discPct,
       taxablePaise: Number(taxRes.taxableAmount),
       gstRate: Number(line.gstRate) || 0,
       cgst: Number(taxRes.cgst),
@@ -338,11 +400,13 @@ export default function InvoicesPage() {
     setIsFixedRate(false);
     setAutoFillParty(true);
     setAutoFillDate(true);
+    setAutoFillDiscount(true);
     setErrorMsg(null);
     setPlaceOfSupply(business?.stateCode || '32');
     setDueDate('');
 
     const firstPartyId = parties[0]?.id || '';
+    const firstPartyDisc = parties[0]?.discountPercentage ? Number(parties[0].discountPercentage) : 0;
 
     setLines([
       {
@@ -355,6 +419,7 @@ export default function InvoicesPage() {
         unit: 'KG',
         qty: '',
         rateRupees: '',
+        discountPercent: firstPartyDisc,
         gstRate: 0,
       },
     ]);
@@ -388,6 +453,9 @@ export default function InvoicesPage() {
           unit: l.unit || 'KG',
           qty: l.qty,
           rateRupees: (l.rate || 0) / 100,
+          discountPercent: l.discountPercent !== undefined ? l.discountPercent : (
+            l.discount && l.rate && l.qty ? Math.round(((l.discount / (l.rate * l.qty)) * 100) * 100) / 100 : 0
+          ),
           gstRate: l.gstRate !== undefined ? l.gstRate : 0,
         }))
       );
@@ -403,6 +471,7 @@ export default function InvoicesPage() {
           unit: 'KG',
           qty: 1,
           rateRupees: 0,
+          discountPercent: 0,
           gstRate: 0,
         },
       ]);
@@ -456,7 +525,10 @@ export default function InvoicesPage() {
         const payloadLines = lines.map((l) => {
           const qty = Number(l.qty) || 0;
           const ratePaise = BigInt(Math.round((Number(l.rateRupees) || 0) * 100));
-          const taxablePaise = isFixedRate ? ratePaise : BigInt(Math.round(qty * Number(ratePaise)));
+          const discPct = Math.max(0, Math.min(100, Number(l.discountPercent) || 0));
+          const grossPaise = isFixedRate ? ratePaise : BigInt(Math.round(qty * Number(ratePaise)));
+          const discountPaise = BigInt(Math.round(Number(grossPaise) * (discPct / 100)));
+          const taxablePaise = grossPaise > discountPaise ? grossPaise - discountPaise : 0n;
           const taxRes = calculateLineTax({
             taxableAmount: taxablePaise,
             gstRate: Number(l.gstRate) || 0,
@@ -470,7 +542,8 @@ export default function InvoicesPage() {
             unit: l.unit || 'KG',
             qty,
             rate: Number(ratePaise),
-            discount: 0,
+            discount: Number(discountPaise),
+            discountPercent: discPct,
             gstRate: Number(l.gstRate) || 0,
             cgst: Number(taxRes.cgst),
             sgst: Number(taxRes.sgst),
@@ -513,7 +586,10 @@ export default function InvoicesPage() {
           const compGroupLines = groupLines.map((l) => {
             const qty = Number(l.qty) || 0;
             const ratePaise = BigInt(Math.round((Number(l.rateRupees) || 0) * 100));
-            const taxablePaise = isFixedRate ? ratePaise : BigInt(Math.round(qty * Number(ratePaise)));
+            const discPct = Math.max(0, Math.min(100, Number(l.discountPercent) || 0));
+            const grossPaise = isFixedRate ? ratePaise : BigInt(Math.round(qty * Number(ratePaise)));
+            const discountPaise = BigInt(Math.round(Number(grossPaise) * (discPct / 100)));
+            const taxablePaise = grossPaise > discountPaise ? grossPaise - discountPaise : 0n;
             const taxRes = calculateLineTax({
               taxableAmount: taxablePaise,
               gstRate: Number(l.gstRate) || 0,
@@ -530,7 +606,8 @@ export default function InvoicesPage() {
               unit: l.unit || 'KG',
               qty,
               rate: Number(ratePaise),
-              discount: 0,
+              discount: Number(discountPaise),
+              discountPercent: discPct,
               gstRate: Number(l.gstRate) || 0,
               cgst: Number(taxRes.cgst),
               sgst: Number(taxRes.sgst),
@@ -650,6 +727,7 @@ export default function InvoicesPage() {
           unit: l.unit || 'PCS',
           rate: l.rate,
           discount: l.discount || 0,
+          discountPercent: l.discountPercent,
           gstRate: l.gstRate || 0,
           cgst: l.cgst || 0,
           sgst: l.sgst || 0,
@@ -1174,16 +1252,35 @@ export default function InvoicesPage() {
                           )}
                         </th>
 
-                        {/* 9. GST % */}
+                        {/* 9. Disc % (with Auto Checkbox) */}
+                        <th className="py-2 px-1 w-20 min-w-[70px] text-center font-bold">
+                          <div className="flex items-center justify-between gap-0.5">
+                            <span className="font-bold">Disc %</span>
+                            <label
+                              className="inline-flex items-center gap-0.5 text-[9px] text-emerald-700 dark:text-emerald-300 font-normal cursor-pointer select-none"
+                              title="Auto-fill down: Copy row 1 discount % to subsequent rows"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={autoFillDiscount}
+                                onChange={(e) => handleToggleAutoFillDiscount(e.target.checked)}
+                                className="w-3 h-3 rounded text-emerald-600 focus:ring-0 cursor-pointer accent-emerald-600"
+                              />
+                              <span>Auto</span>
+                            </label>
+                          </div>
+                        </th>
+
+                        {/* 10. GST % */}
                         <th className="py-2 px-1 w-20 min-w-[70px] text-center font-bold">GST %</th>
 
-                        {/* 10. Taxable */}
+                        {/* 11. Taxable */}
                         <th className="py-2 px-2 text-right w-24 min-w-[85px]">Taxable</th>
 
-                        {/* 11. Total */}
+                        {/* 12. Total */}
                         <th className="py-2 px-2 text-right w-28 min-w-[95px] font-bold">Total (₹)</th>
 
-                        {/* 12. Action */}
+                        {/* 13. Action */}
                         <th className="py-2 px-1 w-9 text-center"></th>
                       </tr>
                     </thead>
@@ -1391,7 +1488,21 @@ export default function InvoicesPage() {
                               />
                             </td>
 
-                            {/* 9. GST % */}
+                            {/* 9. Disc % (Editable with Auto Propagation) */}
+                            <td className="py-2 px-1">
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="any"
+                                placeholder="0"
+                                value={line.discountPercent}
+                                onChange={(e) => handleRowDiscountChange(idx, e.target.value)}
+                                className="w-full px-1 py-1.5 text-xs text-center border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              />
+                            </td>
+
+                            {/* 10. GST % */}
                             <td className="py-2 px-1">
                               <select
                                 value={line.gstRate}
@@ -1410,17 +1521,17 @@ export default function InvoicesPage() {
                               </select>
                             </td>
 
-                            {/* 10. Taxable Value */}
+                            {/* 11. Taxable Value */}
                             <td className="py-2 px-2 text-right font-mono font-semibold text-slate-800 dark:text-slate-200 text-xs whitespace-nowrap">
                               ₹ {comp ? (comp.taxablePaise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
                             </td>
 
-                            {/* 11. Line Total */}
+                            {/* 12. Line Total */}
                             <td className="py-2 px-2 text-right font-mono font-bold text-slate-900 dark:text-slate-100 text-xs whitespace-nowrap">
                               ₹ {comp ? (comp.lineTotal / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
                             </td>
 
-                            {/* 12. Delete */}
+                            {/* 13. Delete */}
                             <td className="py-2 px-1 text-center">
                               {lines.length > 1 && (
                                 <button
@@ -1466,6 +1577,24 @@ export default function InvoicesPage() {
 
                 {/* Totals Summary */}
                 <div className="w-full sm:w-80 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2 font-mono text-xs">
+                  {Number(computedDiscountTotal) > 0 && (
+                    <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                      <span>Gross Total:</span>
+                      <span>
+                        ₹ {(Number(computedGrossSubtotal) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
+                  {Number(computedDiscountTotal) > 0 && (
+                    <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
+                      <span>Total Discount (-):</span>
+                      <span>
+                        - ₹ {(Number(computedDiscountTotal) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex justify-between text-slate-600 dark:text-slate-400">
                     <span>Taxable Subtotal:</span>
                     <span>

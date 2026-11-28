@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
 import { formatPaise, GST_RATES, ITEM_UNITS } from '@bizledger/shared';
-import { Plus, Package, Search, X, Trash2, Edit3, Download, Tag, Layers, CheckCircle2 } from 'lucide-react';
+import { Plus, Package, Search, X, Trash2, Edit3, Download, Tag, Layers, CheckCircle2, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 
 export default function ItemsPage() {
   const { user, hasPermission } = useAuth();
@@ -15,12 +15,16 @@ export default function ItemsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
+  // Sorting State
+  const [sortField, setSortField] = useState<string>('skuCode');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
   // Add / Edit Item Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
 
-  // Form Fields matching screenshot:
-  // company, category, sku_code, sku_name, product_batch, mrp, rlp, upc, hsn_code, expiry_date, ean_code, Unit, GSTRatePercent, OpeningStockQty
+  // Form Fields:
+  // company, category, sku_code, sku_name, product_batch, mrp, rlp, upc, hsn_code, expiry_date, ean_code, Unit, GSTRatePercent, OpeningStockQty, discountPercentage
   const [company, setCompany] = useState('');
   const [category, setCategory] = useState('');
   const [skuCode, setSkuCode] = useState('');
@@ -35,6 +39,7 @@ export default function ItemsPage() {
   const [unit, setUnit] = useState('KG');
   const [gstRatePercent, setGstRatePercent] = useState(0);
   const [openingStockQty, setOpeningStockQty] = useState('0');
+  const [discountPercentage, setDiscountPercentage] = useState('0');
 
   const fetchItems = async () => {
     try {
@@ -80,6 +85,7 @@ export default function ItemsPage() {
     setUnit('KG');
     setGstRatePercent(0);
     setOpeningStockQty('0');
+    setDiscountPercentage('0');
   };
 
   const handleOpenAdd = () => {
@@ -103,6 +109,7 @@ export default function ItemsPage() {
     setUnit(item.unit || 'KG');
     setGstRatePercent(item.gstRate !== undefined ? item.gstRate : 0);
     setOpeningStockQty((item.stockQty || 0).toString());
+    setDiscountPercentage(String(item.discountPercentage || 0));
     if (item.businessId) setTargetBusinessId(item.businessId);
     setIsModalOpen(true);
   };
@@ -130,6 +137,7 @@ export default function ItemsPage() {
         unit: unit.trim().toUpperCase(),
         GSTRatePercent: Number(gstRatePercent),
         gstRate: Number(gstRatePercent),
+        discount_percentage: parseFloat(discountPercentage || '0') || 0,
         OpeningStockQty: Number(openingStockQty) || 0,
         stockQty: Number(openingStockQty) || 0,
       };
@@ -216,6 +224,72 @@ export default function ItemsPage() {
     return nameMatch || codeMatch || hsnMatch || compMatch || catMatch;
   });
 
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const sortedItems = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a, b) => {
+      let valA: any = a[sortField];
+      let valB: any = b[sortField];
+
+      if (sortField === 'skuName' || sortField === 'name') {
+        valA = a.skuName || a.name || '';
+        valB = b.skuName || b.name || '';
+      } else if (sortField === 'rlp') {
+        valA = a.rlp !== undefined && a.rlp !== null ? a.rlp : (a.salePrice || 0);
+        valB = b.rlp !== undefined && b.rlp !== null ? b.rlp : (b.salePrice || 0);
+      } else if (sortField === 'mrp') {
+        valA = a.mrp || 0;
+        valB = b.mrp || 0;
+      } else if (sortField === 'discount') {
+        valA = a.discountPercentage || 0;
+        valB = b.discountPercentage || 0;
+      } else if (sortField === 'stockQty') {
+        valA = a.stockQty || 0;
+        valB = b.stockQty || 0;
+      }
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined || valA === '') return 1;
+      if (valB === null || valB === undefined || valB === '') return -1;
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortOrder === 'asc' ? valA - valB : valB - valA;
+      }
+
+      const cmp = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+      return sortOrder === 'asc' ? cmp : -cmp;
+    });
+    return list;
+  }, [filtered, sortField, sortOrder]);
+
+  const renderSortHeader = (label: string, field: string, className = '') => (
+    <th
+      onClick={() => handleSort(field)}
+      className={`py-3 px-3 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition ${className}`}
+    >
+      <div className={`inline-flex items-center gap-1 ${className.includes('text-right') ? 'justify-end w-full' : className.includes('text-center') ? 'justify-center w-full' : ''}`}>
+        <span>{label}</span>
+        {sortField === field ? (
+          sortOrder === 'asc' ? (
+            <ChevronUp className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+          ) : (
+            <ChevronDown className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+          )
+        ) : (
+          <ArrowUpDown className="w-2.5 h-2.5 text-slate-400 opacity-50" />
+        )}
+      </div>
+    </th>
+  );
+
   return (
     <AppShell currentMenu="items">
       <div className="space-y-6">
@@ -227,7 +301,7 @@ export default function ItemsPage() {
               <span>Item Master (SKU Catalog)</span>
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Standardized FMCG/IvyDMS SKU catalog: company, category, batch, MRP, wholesale RLP, HSN, barcodes, and units
+              Standardized FMCG SKU catalog: company, category, batch, MRP, wholesale RLP, HSN, barcodes, and units
             </p>
           </div>
 
@@ -279,41 +353,42 @@ export default function ItemsPage() {
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th className="py-3 px-3 text-center w-12">#</th>
-                  <th className="py-3 px-3 w-28">SKU Code</th>
-                  <th className="py-3 px-4 min-w-[200px]">SKU Name / Description</th>
-                  <th className="py-3 px-3 w-28">Company</th>
-                  <th className="py-3 px-3 w-24">Category</th>
-                  <th className="py-3 px-3 w-24 text-center">Batch</th>
-                  <th className="py-3 px-3 text-right w-24 font-bold text-slate-800 dark:text-slate-200">RLP (₹)</th>
-                  <th className="py-3 px-3 text-right w-24">MRP (₹)</th>
-                  <th className="py-3 px-3 text-center w-16">Unit</th>
-                  <th className="py-3 px-3 text-center w-24">HSN Code</th>
-                  <th className="py-3 px-3 text-center w-20">GST %</th>
-                  <th className="py-3 px-3 text-right w-24">Stock Qty</th>
+                  {renderSortHeader('SKU Code', 'skuCode', 'w-28 font-mono')}
+                  {renderSortHeader('SKU Name / Description', 'skuName', 'min-w-[200px]')}
+                  {renderSortHeader('Company', 'company', 'w-28')}
+                  {renderSortHeader('Category', 'category', 'w-24')}
+                  {renderSortHeader('Batch', 'productBatch', 'w-24 text-center')}
+                  {renderSortHeader('RLP (₹)', 'rlp', 'text-right w-24 font-bold text-slate-800 dark:text-slate-200')}
+                  {renderSortHeader('MRP (₹)', 'mrp', 'text-right w-24')}
+                  {renderSortHeader('Unit', 'unit', 'text-center w-16')}
+                  {renderSortHeader('Disc %', 'discount', 'text-right w-20 text-blue-600 dark:text-blue-400')}
+                  {renderSortHeader('HSN Code', 'hsnCode', 'text-center w-24')}
+                  {renderSortHeader('GST %', 'gstRate', 'text-center w-20')}
+                  {renderSortHeader('Stock Qty', 'stockQty', 'text-right w-24')}
                   {user?.role === 'super_admin' && (
-                    <th className="py-3 px-3 text-indigo-600 dark:text-indigo-400">Distributor</th>
+                    renderSortHeader('Distributor', 'distributorName', 'text-indigo-600 dark:text-indigo-400')
                   )}
-                  <th className="py-3 px-3 text-center w-20">Status</th>
+                  {renderSortHeader('Status', 'isActive', 'text-center w-20')}
                   <th className="py-3 px-3 text-right w-24">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={15} className="py-12 text-center text-slate-400 font-semibold">
+                    <td colSpan={16} className="py-12 text-center text-slate-400 font-semibold">
                       Loading SKU catalog...
                     </td>
                   </tr>
-                ) : filtered.length === 0 ? (
+                ) : sortedItems.length === 0 ? (
                   <tr>
-                    <td colSpan={15} className="py-12 text-center text-slate-400 space-y-2">
+                    <td colSpan={16} className="py-12 text-center text-slate-400 space-y-2">
                       <Package className="w-8 h-8 mx-auto text-slate-300" />
                       <p className="font-semibold text-slate-600">No SKU items found</p>
                       <p className="text-xs">Add a new SKU item or upload via CSV template.</p>
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((item, idx) => {
+                  sortedItems.map((item, idx) => {
                     const rlpPaise = item.rlp !== undefined && item.rlp !== null ? item.rlp : (item.salePrice || 0);
                     const mrpPaise = item.mrp || 0;
 
@@ -352,6 +427,9 @@ export default function ItemsPage() {
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 uppercase">
                             {item.unit || 'KG'}
                           </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                          {item.discountPercentage ? `${item.discountPercentage}%` : '0%'}
                         </td>
                         <td className="py-2.5 px-3 text-center font-mono text-[11px] text-slate-600 dark:text-slate-400">
                           {item.hsnCode || item.hsnSac || '-'}
@@ -425,7 +503,7 @@ export default function ItemsPage() {
               <div className="flex items-center space-x-2">
                 <Package className="w-5 h-5 text-blue-600" />
                 <h3 className="font-bold text-base text-slate-900 dark:text-slate-100">
-                  {editingItemId ? 'Edit SKU Item Master' : 'Add New SKU Item (IvyDMS Format)'}
+                  {editingItemId ? 'Edit SKU Item Master' : 'Add New SKU Item (Distribution Format)'}
                 </h3>
               </div>
               <button
@@ -516,7 +594,7 @@ export default function ItemsPage() {
                 <h4 className="font-bold text-slate-700 dark:text-slate-300 uppercase text-[10px] tracking-wider">
                   2. Batch & Pricing (Wholesale RLP & MRP)
                 </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
                   <div>
                     <label className="block font-semibold mb-1 text-slate-600">Product Batch</label>
                     <input
@@ -559,6 +637,21 @@ export default function ItemsPage() {
                       value={mrp}
                       onChange={(e) => setMrp(e.target.value)}
                       className="w-full px-3 py-2 border rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-emerald-700 dark:text-emerald-400">
+                      Default Disc %
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      placeholder="0.00"
+                      value={discountPercentage}
+                      onChange={(e) => setDiscountPercentage(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500 font-semibold"
                     />
                   </div>
                 </div>

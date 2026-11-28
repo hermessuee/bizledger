@@ -52,7 +52,7 @@ const MODULE_CONFIGS: Record<ImportModule, ModuleConfig> = {
     endpoint: '/api/v1/imports/parties',
     filename: 'bizledger_customers_retailers_template.csv',
     headers: [
-      'distributor_code',
+      'distributor_name',
       'retailer_code',
       'retailer_name',
       'address_1',
@@ -67,9 +67,9 @@ const MODULE_CONFIGS: Record<ImportModule, ModuleConfig> = {
       'dl_expiry_date',
     ],
     sampleRows: [
-      ['DIST01', 'RET101', 'Padi Grocery Store', 'Kayamkulam Junction', '9847123456', 'padi@gmail.com', '9.1726', '76.5013', '32AAPCA1234M1Z5', 'Kayamkulam South', 'AAPCA1234M', 'KL-ALP-2024-99', '2028-12-31'],
-      ['DIST01', 'RET102', 'Aazhimala Supermarket', 'Beach Road, Vizhinjam', '9447654321', 'aazhimala@yahoo.com', '8.3683', '76.9936', '32AAXCA9876K1Z2', 'Vizhinjam West', 'AAXCA9876K', 'KL-TVM-2023-88', '2029-06-30'],
-      ['DIST01', 'RET103', 'Bristol 5287 Enterprises', 'Town Hall Road', '9895112233', 'bristol5287@gmail.com', '9.5916', '76.5222', '', 'Kottayam Central', 'ABCPD9900L', '', ''],
+      ['Gold Father', 'RET101', 'Padi Grocery Store', 'Kayamkulam Junction', '9847123456', 'padi@gmail.com', '9.1726', '76.5013', '32AAPCA1234M1Z5', 'Kayamkulam South', 'AAPCA1234M', 'KL-ALP-2024-99', '2028-12-31'],
+      ['Gold Father', 'RET102', 'Aazhimala Supermarket', 'Beach Road, Vizhinjam', '9447654321', 'aazhimala@yahoo.com', '8.3683', '76.9936', '32AAXCA9876K1Z2', 'Vizhinjam West', 'AAXCA9876K', 'KL-TVM-2023-88', '2029-06-30'],
+      ['Gold Father', 'RET103', 'Bristol 5287 Enterprises', 'Town Hall Road', '9895112233', 'bristol5287@gmail.com', '9.5916', '76.5222', '', 'Kottayam Central', 'ABCPD9900L', '', ''],
     ],
   },
   vendors: {
@@ -284,7 +284,8 @@ export default function BulkUploadPage() {
         payload = {
           kind: activeModule === 'customers' ? 'customer' : 'vendor',
           records: parsedRows.map((r) => ({
-            distributor_code: r['distributor_code'] || r['distributorCode'] || null,
+            distributor_name: r['distributor_name'] || r['distributorName'] || r['distributor_code'] || r['distributorCode'] || null,
+            distributor_code: r['distributor_name'] || r['distributorName'] || r['distributor_code'] || r['distributorCode'] || null,
             retailer_code: r['retailer_code'] || r['retailerCode'] || null,
             retailer_name: r['retailer_name'] || r['retailerName'] || r['Name'] || r['name'],
             name: r['retailer_name'] || r['retailerName'] || r['Name'] || r['name'],

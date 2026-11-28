@@ -1,27 +1,53 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
 import { formatPaise, isValidGSTIN } from '@bizledger/shared';
-import { Plus, Users, Search, X, Phone, Mail, MapPin, Trash2, Edit3, Download, ShieldCheck } from 'lucide-react';
+import { Plus, Users, Search, X, Phone, Mail, MapPin, Trash2, Edit3, Download, ShieldCheck, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+
+const getNextRetailerCode = (list: any[]): string => {
+  let maxNum = 0;
+  let prefix = 'RET';
+  let padLen = 4;
+
+  for (const c of list || []) {
+    const code = c.retailerCode || '';
+    const match = String(code).match(/^([A-Za-z_-]*)(\d+)$/);
+    if (match) {
+      const num = parseInt(match[2], 10);
+      if (!isNaN(num) && num > maxNum) {
+        maxNum = num;
+        if (match[1]) prefix = match[1];
+        padLen = Math.max(padLen, match[2].length);
+      }
+    }
+  }
+
+  const nextNum = maxNum + 1;
+  return `${prefix}${String(nextNum).padStart(padLen, '0')}`;
+};
 
 export default function CustomersPage() {
-  const { user, hasPermission } = useAuth();
+  const { user, business, hasPermission } = useAuth();
   const [customers, setCustomers] = useState<any[]>([]);
   const [distributors, setDistributors] = useState<any[]>([]);
   const [targetBusinessId, setTargetBusinessId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
+  // Sorting State
+  const [sortField, setSortField] = useState<string>('retailerCode');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
   // Add / Edit Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
 
-  // Form Fields matching screenshot:
-  // distributor_code, retailer_code, retailer_name, address_1, mobile_number, email, latitude, longitude, gst_no, tin_location_name, pan_no, dl_number, dl_expiry_date
-  const [distributorCode, setDistributorCode] = useState('');
+  // Form Fields:
+  // distributor_name, retailer_code, retailer_name, address_1, mobile_number, email, latitude, longitude, gst_no, tin_location_name, pan_no, dl_number, dl_expiry_date
+  const [distributorName, setDistributorName] = useState('');
   const [retailerCode, setRetailerCode] = useState('');
   const [retailerName, setRetailerName] = useState('');
   const [address1, setAddress1] = useState('');
@@ -34,6 +60,7 @@ export default function CustomersPage() {
   const [panNo, setPanNo] = useState('');
   const [dlNumber, setDlNumber] = useState('');
   const [dlExpiryDate, setDlExpiryDate] = useState('');
+  const [discountPercentage, setDiscountPercentage] = useState('0');
   const [creditDays, setCreditDays] = useState('30');
   const [openingBalance, setOpeningBalance] = useState('0');
 
@@ -67,8 +94,8 @@ export default function CustomersPage() {
 
   const resetForm = () => {
     setEditingCustomerId(null);
-    setDistributorCode('');
-    setRetailerCode('');
+    setDistributorName(business?.name || '');
+    setRetailerCode(getNextRetailerCode(customers));
     setRetailerName('');
     setAddress1('');
     setMobileNumber('');
@@ -80,6 +107,7 @@ export default function CustomersPage() {
     setPanNo('');
     setDlNumber('');
     setDlExpiryDate('');
+    setDiscountPercentage('0');
     setCreditDays('30');
     setOpeningBalance('0');
   };
@@ -91,7 +119,7 @@ export default function CustomersPage() {
 
   const handleOpenEdit = (c: any) => {
     setEditingCustomerId(c.id);
-    setDistributorCode(c.distributorCode || '');
+    setDistributorName(c.distributorName || c.distributorCode || business?.name || '');
     setRetailerCode(c.retailerCode || '');
     setRetailerName(c.retailerName || c.name || '');
     setAddress1(c.address1 || c.address || '');
@@ -104,6 +132,7 @@ export default function CustomersPage() {
     setPanNo(c.panNo || '');
     setDlNumber(c.dlNumber || '');
     setDlExpiryDate(c.dlExpiryDate || '');
+    setDiscountPercentage(String(c.discountPercentage || 0));
     setCreditDays((c.creditDays || 30).toString());
     setOpeningBalance(c.openingBalance ? (c.openingBalance / 100).toString() : '0');
     if (c.businessId) setTargetBusinessId(c.businessId);
@@ -125,14 +154,13 @@ export default function CustomersPage() {
       const payload = {
         businessId: user?.role === 'super_admin' ? (targetBusinessId || undefined) : undefined,
         kind: 'customer',
-        distributor_code: distributorCode.trim() || null,
+        distributor_name: distributorName.trim() || business?.name || null,
+        distributor_code: distributorName.trim() || null,
         retailer_code: retailerCode.trim() || null,
         retailer_name: retailerName.trim(),
         name: retailerName.trim(),
         address_1: address1.trim() || null,
-        address: address1.trim() || null,
         mobile_number: mobileNumber.trim() || null,
-        phone: mobileNumber.trim() || null,
         email: email.trim() || null,
         latitude: latitude.trim() || null,
         longitude: longitude.trim() || null,
@@ -142,9 +170,9 @@ export default function CustomersPage() {
         pan_no: cleanPan,
         dl_number: dlNumber.trim() || null,
         dl_expiry_date: dlExpiryDate.trim() || null,
-        creditDays: parseInt(creditDays, 10) || 0,
+        discount_percentage: parseFloat(discountPercentage || '0') || 0,
+        creditDays: parseInt(creditDays || '30', 10),
         openingBalance: balancePaise,
-        isActive: true,
       };
 
       if (editingCustomerId) {
@@ -154,18 +182,17 @@ export default function CustomersPage() {
       }
 
       setIsModalOpen(false);
-      resetForm();
       fetchCustomers();
     } catch (err: any) {
       alert(err.message || 'Failed to save customer');
     }
   };
 
-  const handleToggleCustomerStatus = async (c: any) => {
-    const newStatus = c.isActive === false ? true : false;
+  const handleToggleActive = async (c: any) => {
     try {
-      await api.put(`/api/v1/parties/${c.id}`, { isActive: newStatus });
-      fetchCustomers();
+      const nextActive = !c.isActive;
+      await api.put(`/api/v1/parties/${c.id}`, { isActive: nextActive });
+      setCustomers(customers.map((cust) => (cust.id === c.id ? { ...cust, isActive: nextActive } : cust)));
     } catch (err: any) {
       alert(err.message || 'Failed to update customer status');
     }
@@ -175,16 +202,15 @@ export default function CustomersPage() {
     if (!confirm(`Are you sure you want to delete ${c.name}? This will remove it from all distributor records.`)) return;
     try {
       await api.delete(`/api/v1/parties/${c.id}`);
-      fetchCustomers();
+      setCustomers(customers.filter((cust) => cust.id !== c.id));
     } catch (err: any) {
       alert(err.message || 'Failed to delete customer');
     }
   };
 
-  // Download Sample CSV Template matching screenshot exact columns
   const handleDownloadSampleCsv = () => {
     const headers = [
-      'distributor_code',
+      'distributor_name',
       'retailer_code',
       'retailer_name',
       'address_1',
@@ -198,35 +224,129 @@ export default function CustomersPage() {
       'dl_number',
       'dl_expiry_date',
     ];
-    const sampleRows = [
-      ['DIST01', 'RET101', 'Padi Grocery Store', 'Kayamkulam Junction', '9847123456', 'padi@gmail.com', '9.1726', '76.5013', '32AAPCA1234M1Z5', 'Kayamkulam South', 'AAPCA1234M', 'KL-ALP-2024-99', '2028-12-31'],
-      ['DIST01', 'RET102', 'Aazhimala Supermarket', 'Beach Road, Vizhinjam', '9447654321', 'aazhimala@yahoo.com', '8.3683', '76.9936', '32AAXCA9876K1Z2', 'Vizhinjam West', 'AAXCA9876K', 'KL-TVM-2023-88', '2029-06-30'],
-      ['DIST01', 'RET103', 'Bristol 5287 Enterprises', 'Town Hall Road', '9895112233', 'bristol5287@gmail.com', '9.5916', '76.5222', '', 'Kottayam Central', 'ABCPD9900L', '', ''],
+    const sampleRow = [
+      business?.name || 'Gold Father',
+      getNextRetailerCode(customers),
+      'City Medicals & Supermarket',
+      'Main Bazaar Road, Near Town Hall',
+      '9847012345',
+      'citymedicals@example.com',
+      '9.9312',
+      '76.2673',
+      '32AAACB1234C1Z5',
+      'Kayamkulam',
+      'AAACB1234C',
+      'KL-AL-12345',
+      '2028-12-31',
     ];
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...sampleRows.map((r) => r.join(','))].join('\n');
+    const csvContent = [headers.join(','), sampleRow.map((v) => `"${v}"`).join(',')].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'bizledger_customers_retailers_template.csv';
+    link.setAttribute('download', 'bizledger_customers_retailers_template.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
-  const filtered = customers.filter((c) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    const nameMatch = (c.name || c.retailerName || '').toLowerCase().includes(q);
-    const codeMatch = (c.retailerCode || '').toLowerCase().includes(q);
-    const gstMatch = (c.gstin || c.gstNo || '').toLowerCase().includes(q);
-    const phoneMatch = (c.phone || c.mobileNumber || '').includes(q);
-    const panMatch = (c.panNo || '').toLowerCase().includes(q);
-    const locMatch = (c.tinLocationName || c.address || '').toLowerCase().includes(q);
-    return nameMatch || codeMatch || gstMatch || phoneMatch || panMatch || locMatch;
-  });
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const filtered = useMemo(() => {
+    return customers.filter((c) => {
+      const s = search.toLowerCase();
+      return (
+        (c.name && c.name.toLowerCase().includes(s)) ||
+        (c.retailerName && c.retailerName.toLowerCase().includes(s)) ||
+        (c.retailerCode && c.retailerCode.toLowerCase().includes(s)) ||
+        (c.mobileNumber && c.mobileNumber.toLowerCase().includes(s)) ||
+        (c.phone && c.phone.toLowerCase().includes(s)) ||
+        (c.gstNo && c.gstNo.toLowerCase().includes(s)) ||
+        (c.gstin && c.gstin.toLowerCase().includes(s)) ||
+        (c.tinLocationName && c.tinLocationName.toLowerCase().includes(s)) ||
+        (c.panNo && c.panNo.toLowerCase().includes(s)) ||
+        (c.dlNumber && c.dlNumber.toLowerCase().includes(s))
+      );
+    });
+  }, [customers, search]);
+
+  const sortedCustomers = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a, b) => {
+      let valA: any = a[sortField];
+      let valB: any = b[sortField];
+
+      if (sortField === 'retailerName' || sortField === 'name') {
+        valA = a.retailerName || a.name || '';
+        valB = b.retailerName || b.name || '';
+      } else if (sortField === 'balancePaise') {
+        valA = a.currentBalance ?? a.openingBalance ?? 0;
+        valB = b.currentBalance ?? b.openingBalance ?? 0;
+      } else if (sortField === 'address') {
+        valA = a.address1 || a.address || '';
+        valB = b.address1 || b.address || '';
+      } else if (sortField === 'mobile') {
+        valA = a.mobileNumber || a.phone || '';
+        valB = b.mobileNumber || b.phone || '';
+      } else if (sortField === 'gst') {
+        valA = a.gstNo || a.gstin || '';
+        valB = b.gstNo || b.gstin || '';
+      } else if (sortField === 'discount') {
+        valA = a.discountPercentage || 0;
+        valB = b.discountPercentage || 0;
+      }
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined || valA === '') return 1;
+      if (valB === null || valB === undefined || valB === '') return -1;
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortOrder === 'asc' ? valA - valB : valB - valA;
+      }
+
+      const cmp = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+      return sortOrder === 'asc' ? cmp : -cmp;
+    });
+    return list;
+  }, [filtered, sortField, sortOrder]);
+
+  const renderSortHeader = (label: string, field: string, className = '') => (
+    <th
+      onClick={() => handleSort(field)}
+      className={`py-3 px-3 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition ${className}`}
+    >
+      <div className={`inline-flex items-center gap-1 ${className.includes('text-right') ? 'justify-end w-full' : ''}`}>
+        <span>{label}</span>
+        {sortField === field ? (
+          sortOrder === 'asc' ? (
+            <ChevronUp className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+          ) : (
+            <ChevronDown className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+          )
+        ) : (
+          <ArrowUpDown className="w-2.5 h-2.5 text-slate-400 opacity-50" />
+        )}
+      </div>
+    </th>
+  );
+
+  const handleToggleCustomerStatus = async (c: any) => {
+    const newStatus = c.isActive === false ? true : false;
+    try {
+      await api.put(`/api/v1/parties/${c.id}`, { isActive: newStatus });
+      fetchCustomers();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update customer status');
+    }
+  };
 
   return (
     <AppShell currentMenu="customers">
@@ -239,7 +359,7 @@ export default function CustomersPage() {
               <span>Customer Master (Retailer Directory)</span>
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              FMCG/IvyDMS Retailer profiles: retailer code, mobile, location, GPS, GSTIN, PAN, and Drug License
+              Retailer directory profiles: retailer code, mobile, location, GPS, GSTIN, PAN, and Drug License
             </p>
           </div>
 
@@ -291,39 +411,40 @@ export default function CustomersPage() {
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th className="py-3 px-3 text-center w-12">#</th>
-                  <th className="py-3 px-3 w-28">Retailer Code</th>
-                  <th className="py-3 px-4 min-w-[200px]">Retailer Name</th>
-                  <th className="py-3 px-3 w-32">Location / Area</th>
-                  <th className="py-3 px-4 min-w-[180px]">Address</th>
-                  <th className="py-3 px-3 w-28">Mobile / Contact</th>
-                  <th className="py-3 px-3 w-36">GST No (GSTIN)</th>
-                  <th className="py-3 px-3 w-28">PAN No</th>
-                  <th className="py-3 px-3 w-32">Drug License (DL)</th>
-                  <th className="py-3 px-3 text-right w-28">Balance (₹)</th>
+                  {renderSortHeader('Retailer Code', 'retailerCode', 'w-28 font-mono')}
+                  {renderSortHeader('Retailer Name', 'retailerName', 'min-w-[200px]')}
+                  {renderSortHeader('Location / Area', 'tinLocationName', 'w-32')}
+                  {renderSortHeader('Address', 'address', 'min-w-[180px]')}
+                  {renderSortHeader('Mobile / Contact', 'mobile', 'w-28')}
+                  {renderSortHeader('GST No (GSTIN)', 'gst', 'w-36')}
+                  {renderSortHeader('PAN No', 'panNo', 'w-28')}
+                  {renderSortHeader('Drug License (DL)', 'dlNumber', 'w-32')}
+                  {renderSortHeader('Disc %', 'discount', 'text-right w-20 text-blue-600 dark:text-blue-400')}
+                  {renderSortHeader('Balance (₹)', 'balancePaise', 'text-right w-28')}
                   {user?.role === 'super_admin' && (
-                    <th className="py-3 px-3 text-indigo-600 dark:text-indigo-400">Distributor</th>
+                    renderSortHeader('Distributor', 'distributorName', 'text-indigo-600 dark:text-indigo-400')
                   )}
-                  <th className="py-3 px-3 text-center w-20">Status</th>
+                  {renderSortHeader('Status', 'isActive', 'text-center w-20')}
                   <th className="py-3 px-3 text-right w-24">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={13} className="py-12 text-center text-slate-400 font-semibold">
+                    <td colSpan={14} className="py-12 text-center text-slate-400 font-semibold">
                       Loading customer directory...
                     </td>
                   </tr>
-                ) : filtered.length === 0 ? (
+                ) : sortedCustomers.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="py-12 text-center text-slate-400 space-y-2">
+                    <td colSpan={14} className="py-12 text-center text-slate-400 space-y-2">
                       <Users className="w-8 h-8 mx-auto text-slate-300" />
                       <p className="font-semibold text-slate-600">No retailers found</p>
                       <p className="text-xs">Add a customer or import via CSV template.</p>
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((c, idx) => (
+                  sortedCustomers.map((c, idx) => (
                     <tr key={c.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
                       <td className="py-2.5 px-3 text-center font-mono text-slate-400 text-[11px]">
                         {idx + 1}
@@ -358,15 +479,20 @@ export default function CustomersPage() {
                       <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600 dark:text-slate-400">
                         {c.panNo || '-'}
                       </td>
-                      <td className="py-2.5 px-3 font-mono text-[10px] text-slate-600 dark:text-slate-400">
+                      <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700 dark:text-slate-300">
                         {c.dlNumber ? (
-                          <span>
-                            {c.dlNumber}
-                            {c.dlExpiryDate && <span className="block text-slate-400">Exp: {c.dlExpiryDate}</span>}
-                          </span>
+                          <div>
+                            <span className="font-semibold">{c.dlNumber}</span>
+                            {c.dlExpiryDate && (
+                              <span className="block text-[9px] text-slate-400">Exp: {c.dlExpiryDate}</span>
+                            )}
+                          </div>
                         ) : (
-                          '-'
+                          <span className="text-slate-400">-</span>
                         )}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                        {c.discountPercentage ? `${c.discountPercentage}%` : '0%'}
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
                         ₹ {formatPaise(c.currentBalance ?? c.openingBalance ?? 0)}
@@ -379,15 +505,16 @@ export default function CustomersPage() {
                         </td>
                       )}
                       <td className="py-2.5 px-3 text-center">
-                        {c.isActive !== false ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                            Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
-                            Disabled
-                          </span>
-                        )}
+                        <button
+                          onClick={() => handleToggleActive(c)}
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition ${
+                            c.isActive !== false
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300'
+                              : 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400'
+                          }`}
+                        >
+                          {c.isActive !== false ? 'Active' : 'Disabled'}
+                        </button>
                       </td>
                       <td className="py-2.5 px-3 text-right space-x-1 whitespace-nowrap">
                         <button
@@ -396,13 +523,6 @@ export default function CustomersPage() {
                           title="Edit Customer Details"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleToggleCustomerStatus(c)}
-                          className="px-1.5 py-0.5 text-[10px] font-bold rounded border transition text-slate-600 hover:bg-slate-100"
-                          title="Toggle Active/Disable"
-                        >
-                          {c.isActive === false ? 'Enable' : 'Disable'}
                         </button>
                         {user?.role === 'super_admin' && (
                           <button
@@ -431,7 +551,7 @@ export default function CustomersPage() {
               <div className="flex items-center space-x-2">
                 <Users className="w-5 h-5 text-blue-600" />
                 <h3 className="font-bold text-base text-slate-900 dark:text-slate-100">
-                  {editingCustomerId ? 'Edit Retailer Profile' : 'Add New Retailer / Customer (IvyDMS Format)'}
+                  {editingCustomerId ? 'Edit Retailer Profile' : 'Add New Retailer / Customer (Distribution Format)'}
                 </h3>
               </div>
               <button
@@ -450,7 +570,12 @@ export default function CustomersPage() {
                   </label>
                   <select
                     value={targetBusinessId}
-                    onChange={(e) => setTargetBusinessId(e.target.value)}
+                    onChange={(e) => {
+                      const bId = e.target.value;
+                      setTargetBusinessId(bId);
+                      const bObj = distributors.find((d: any) => d.id === bId);
+                      if (bObj) setDistributorName(bObj.name);
+                    }}
                     required
                     className="w-full px-3 py-2 rounded-xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
                   >
@@ -471,23 +596,25 @@ export default function CustomersPage() {
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block font-semibold mb-1 text-slate-600">Distributor Code</label>
+                    <label className="block font-semibold mb-1 text-slate-600">Distributor Name</label>
                     <input
                       type="text"
-                      placeholder="e.g. DIST01"
-                      value={distributorCode}
-                      onChange={(e) => setDistributorCode(e.target.value)}
-                      className="w-full px-3 py-2 border rounded-xl font-mono bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none"
+                      placeholder="e.g. Gold Father"
+                      value={distributorName}
+                      onChange={(e) => setDistributorName(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-xl font-medium bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold mb-1 text-slate-600">Retailer Code</label>
+                    <label className="block font-semibold mb-1 text-slate-600">
+                      Retailer Code <span className="text-[10px] text-blue-600 font-normal">(Auto-Serial, Editable)</span>
+                    </label>
                     <input
                       type="text"
-                      placeholder="e.g. RET101"
+                      placeholder="e.g. RET0001"
                       value={retailerCode}
                       onChange={(e) => setRetailerCode(e.target.value)}
-                      className="w-full px-3 py-2 border rounded-xl font-mono bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none font-bold"
+                      className="w-full px-3 py-2 border rounded-xl font-mono bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 outline-none font-bold"
                     />
                   </div>
                   <div>
@@ -636,8 +763,21 @@ export default function CustomersPage() {
                 </div>
               </div>
 
-              {/* Section 4: Credit & Financials */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {/* Section 4: Discount & Financials */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-600">Default Discount %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    placeholder="0"
+                    value={discountPercentage}
+                    onChange={(e) => setDiscountPercentage(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-xl font-mono bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none font-bold text-blue-600"
+                  />
+                </div>
                 <div>
                   <label className="block font-semibold mb-1 text-slate-600">Credit Period (Days)</label>
                   <input
