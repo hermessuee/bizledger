@@ -166,6 +166,7 @@ export class MemoryStore {
       description: string;
       hsnSac?: string | null;
       qty: number;
+      unit?: string | null;
       rate: number;
       discount: number;
       gstRate: number;
@@ -593,6 +594,28 @@ export class MemoryStore {
         else lines.push({ accountId: reRoundOffAccount.id, debit: 0, credit: -doc.roundOff });
       }
       lines.push({ accountId: reApAccount.id, partyId: doc.partyId, debit: 0, credit: doc.total });
+    } else if (doc.docType === 'credit_note') {
+      // Sales Return (Credit Note): reverses sales income, reverses output GST liability, reduces customer receivable
+      lines.push({ accountId: reSalesAccount.id, debit: doc.subtotal, credit: 0 });
+      if (totalCgst > 0 && reOutputCgst) lines.push({ accountId: reOutputCgst.id, debit: totalCgst, credit: 0 });
+      if (totalSgst > 0 && reOutputSgst) lines.push({ accountId: reOutputSgst.id, debit: totalSgst, credit: 0 });
+      if (totalIgst > 0 && reOutputIgst) lines.push({ accountId: reOutputIgst.id, debit: totalIgst, credit: 0 });
+      if (doc.roundOff !== 0 && reRoundOffAccount) {
+        if (doc.roundOff > 0) lines.push({ accountId: reRoundOffAccount.id, debit: doc.roundOff, credit: 0 });
+        else lines.push({ accountId: reRoundOffAccount.id, debit: 0, credit: -doc.roundOff });
+      }
+      lines.push({ accountId: reArAccount.id, partyId: doc.partyId, debit: 0, credit: doc.total });
+    } else if (doc.docType === 'debit_note') {
+      // Purchase Return (Debit Note): reduces vendor payable, reverses purchases expense, reverses input GST
+      lines.push({ accountId: reApAccount.id, partyId: doc.partyId, debit: doc.total, credit: 0 });
+      lines.push({ accountId: rePurchasesAccount.id, debit: 0, credit: doc.subtotal });
+      if (totalCgst > 0 && reInputCgst) lines.push({ accountId: reInputCgst.id, debit: 0, credit: totalCgst });
+      if (totalSgst > 0 && reInputSgst) lines.push({ accountId: reInputSgst.id, debit: 0, credit: totalSgst });
+      if (totalIgst > 0 && reInputIgst) lines.push({ accountId: reInputIgst.id, debit: 0, credit: totalIgst });
+      if (doc.roundOff !== 0 && reRoundOffAccount) {
+        if (doc.roundOff > 0) lines.push({ accountId: reRoundOffAccount.id, debit: 0, credit: doc.roundOff });
+        else lines.push({ accountId: reRoundOffAccount.id, debit: -doc.roundOff, credit: 0 });
+      }
     }
 
     try {

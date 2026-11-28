@@ -73,6 +73,9 @@ documents.post('/', async (c) => {
     dueDate: data.dueDate,
     partyId: data.partyId,
     placeOfSupply: data.placeOfSupply,
+    originalDocId: body.originalDocId || null,
+    originalDocNo: body.originalDocNo || null,
+    returnReason: body.returnReason || null,
     subtotal: data.subtotal,
     taxTotal: data.taxTotal,
     roundOff: data.roundOff,
@@ -87,6 +90,11 @@ documents.post('/', async (c) => {
   };
 
   memoryStore.documents.push(newDoc);
+
+  // If autoPost is requested (e.g. return entry recorded and locked)
+  if (body.autoPost) {
+    memoryStore.postDocument(newDoc.id, user.id);
+  }
 
   recordAuditLog({
     businessId: targetBusinessId,

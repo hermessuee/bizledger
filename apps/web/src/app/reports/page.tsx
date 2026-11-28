@@ -11,6 +11,7 @@ import {
   downloadTrialBalancePdf,
   downloadBalanceSheetPdf,
   downloadGstReportPdf,
+  downloadPsrPdf,
 } from '@/lib/pdf';
 import * as XLSX from 'xlsx';
 import {
@@ -30,13 +31,17 @@ import {
   ArrowUpRight,
   Layers,
   RefreshCw,
+  Package,
+  ShoppingBag,
+  Tag,
+  Percent,
 } from 'lucide-react';
 
 export default function ReportsPage() {
   const { business, user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
 
-  const [activeTab, setActiveTab] = useState<'detailed' | 'pnl' | 'tb' | 'bs' | 'gst'>('detailed');
+  const [activeTab, setActiveTab] = useState<'detailed' | 'psr' | 'pnl' | 'tb' | 'bs' | 'gst'>('detailed');
   const [tbData, setTbData] = useState<any>(null);
   const [pnlData, setPnlData] = useState<any>(null);
   const [bsData, setBsData] = useState<any>(null);
@@ -59,6 +64,11 @@ export default function ReportsPage() {
   const [loadingDetailed, setLoadingDetailed] = useState(false);
   const [businessesList, setBusinessesList] = useState<any[]>([]);
 
+  // Product Sale Report (PSR) State
+  const [psrData, setPsrData] = useState<any>(null);
+  const [loadingPsr, setLoadingPsr] = useState(false);
+  const [psrSearchQuery, setPsrSearchQuery] = useState('');
+
   // Fetch summary reports
   const fetchSummaryReports = async () => {
     setLoading(true);
@@ -77,6 +87,28 @@ export default function ReportsPage() {
       console.error('Failed to load summary reports:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch Product Sale Report (PSR)
+  const fetchPsrReport = async (override?: { fromDate?: string; toDate?: string; businessId?: string }) => {
+    setLoadingPsr(true);
+    try {
+      const fFrom = override?.fromDate !== undefined ? override.fromDate : detailedFilters.fromDate;
+      const fTo = override?.toDate !== undefined ? override.toDate : detailedFilters.toDate;
+      const fBiz = override?.businessId !== undefined ? override.businessId : detailedFilters.businessId;
+
+      const params = new URLSearchParams();
+      if (fFrom) params.set('fromDate', fFrom);
+      if (fTo) params.set('toDate', fTo);
+      if (fBiz && fBiz !== 'all') params.set('businessId', fBiz);
+
+      const res = await api.get(`/api/v1/reports/psr?${params.toString()}`);
+      setPsrData(res);
+    } catch (err) {
+      console.error('Failed to load PSR report:', err);
+    } finally {
+      setLoadingPsr(false);
     }
   };
 
@@ -110,6 +142,7 @@ export default function ReportsPage() {
   useEffect(() => {
     fetchSummaryReports();
     fetchDetailedReport();
+    fetchPsrReport();
   }, []);
 
   // Update businessId filter when active business in context changes
@@ -117,6 +150,7 @@ export default function ReportsPage() {
     if (business?.id && business.id !== 'all') {
       setDetailedFilters((prev) => ({ ...prev, businessId: business.id }));
       fetchDetailedReport({ businessId: business.id });
+      fetchPsrReport({ businessId: business.id });
     }
   }, [business?.id]);
 
@@ -162,6 +196,43 @@ export default function ReportsPage() {
       count: list.length,
     };
   }, [filteredEntries]);
+
+  // Client-side search and filtering for PSR Items
+  const filteredPsrItems = useMemo(() => {
+    if (!psrData?.items) return [];
+    const q = psrSearchQuery.trim().toLowerCase();
+    if (!q) return psrData.items;
+
+    return psrData.items.filter((item: any) => {
+      const name = (item.name || '').toLowerCase();
+      const hsn = (item.hsnSac || '').toLowerCase();
+      return name.includes(q) || hsn.includes(q);
+    });
+  }, [psrData?.items, psrSearchQuery]);
+
+  // Computed Totals for PSR
+  const computedPsrSummary = useMemo(() => {
+    const items = filteredPsrItems;
+    let totalQty = 0;
+    let totalTaxable = 0;
+    let totalTax = 0;
+    let totalSales = 0;
+
+    for (const item of items) {
+      totalQty += item.totalQty || 0;
+      totalTaxable += item.taxableValue || 0;
+      totalTax += item.taxAmount || 0;
+      totalSales += item.totalSales || 0;
+    }
+
+    return {
+      distinctProducts: items.length,
+      totalQty,
+      totalTaxable,
+      totalTax,
+      totalSales,
+    };
+  }, [filteredPsrItems]);
 
   // Helper to build the exact 16-column dataset requested by user
   const getDetailedReportRows = () => {
@@ -554,6 +625,236 @@ export default function ReportsPage() {
 
     setDetailedFilters((prev) => ({ ...prev, fromDate: from, toDate: to }));
     fetchDetailedReport({ fromDate: from, toDate: to });
+    fetchPsrReport({ fromDate: from, toDate: to });
+  };
+
+  // --- PRODUCT SALE REPORT (PSR) EXPORTS (PDF & EXCEL) ---
+  const handleExportPsrPdf = () => {
+    if (!psrData) return;
+    const dist = psrData.distributor || business;
+    const items = filteredPsrItems;
+    const summary = computedPsrSummary;
+
+    downloadPsrPdf({
+      business: {
+        name: dist?.name || business?.name || 'Distributor Firm',
+        gstin: dist?.gstin?.trim() || business?.gstin?.trim() || 'Unregistered',
+        address: dist?.address || business?.address || 'Kerala',
+        stateCode: dist?.stateCode || business?.stateCode || '32',
+      },
+      filters: {
+        fromDate: detailedFilters.fromDate,
+        toDate: detailedFilters.toDate,
+      },
+      summary: {
+        distinctProducts: items.length,
+        totalQty: summary.totalQty,
+        totalTaxable: summary.totalTaxable,
+        totalTax: summary.totalTax,
+        totalSales: summary.totalSales,
+        totalInvoices: psrData.summary?.totalInvoices || 0,
+      },
+      items: items.map((i: any, idx: number) => ({
+        slNo: idx + 1,
+        name: i.name,
+        hsnSac: i.hsnSac || '-',
+        unit: i.unit || 'PCS',
+        totalQty: i.totalQty || 0,
+        avgRate: i.avgRate || 0,
+        taxableValue: i.taxableValue || 0,
+        taxAmount: i.taxAmount || 0,
+        totalSales: i.totalSales || 0,
+        percentContribution: summary.totalSales > 0 ? ((i.totalSales / summary.totalSales) * 100).toFixed(1) : '0.0',
+      })),
+    });
+  };
+
+  const handleExportPsrExcel = async () => {
+    if (!psrData) return;
+    const dist = psrData.distributor || business;
+    const items = filteredPsrItems;
+    const summary = computedPsrSummary;
+
+    const ExcelJSModule = await import('exceljs');
+    const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Product Sale Report (PSR)', {
+      views: [{ showGridLines: true }],
+    });
+
+    const thinBorder = {
+      top: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      left: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      bottom: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      right: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+    };
+
+    ws.columns = [
+      { width: 8 },  // Sl No
+      { width: 36 }, // Product Description
+      { width: 14 }, // HSN/SAC
+      { width: 10 }, // Unit
+      { width: 16 }, // Quantity Sold
+      { width: 18 }, // Avg Rate (INR)
+      { width: 22 }, // Taxable Value (INR)
+      { width: 18 }, // GST Tax (INR)
+      { width: 24 }, // Total Sales Value (INR)
+      { width: 16 }, // Share %
+    ];
+
+    const distName = (dist?.name || business?.name || 'DISTRIBUTOR FIRM').toUpperCase();
+    const gstin = dist?.gstin?.trim() || business?.gstin?.trim() || 'Unregistered';
+    const state = `${dist?.stateCode || business?.stateCode || '32'} - Kerala`;
+    const addr = dist?.address || business?.address || 'Kerala';
+
+    const now = new Date();
+    const genTimeStr = `${now.toLocaleDateString('en-GB')}, ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).toLowerCase()}`;
+
+    // Row 1: Merged A1:J1 with Brick Red fill & Bold white text
+    ws.mergeCells('A1:J1');
+    const row1 = ws.getRow(1);
+    row1.height = 26;
+    ws.getCell('A1').value = distName;
+    for (let c = 1; c <= 10; c++) {
+      const cell = row1.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB83B2F' } };
+      cell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = thinBorder;
+    }
+
+    // Rows 2-4: Merged A:J Slate Blue
+    const subRows = [
+      `GSTIN: ${gstin} | State: ${state} | Address: ${addr}`,
+      'PRODUCT SALE REPORT (PSR) - SALES AGGREGATION REGISTER',
+      `Period: ${detailedFilters.fromDate || 'Beginning'} to ${detailedFilters.toDate || 'Present'} | Generated: ${genTimeStr} | Products: ${items.length} | Gross Revenue: Rs. ${(summary.totalSales / 100).toFixed(2)}`,
+    ];
+    subRows.forEach((txt, idx) => {
+      const r = idx + 2;
+      ws.mergeCells(`A${r}:J${r}`);
+      const row = ws.getRow(r);
+      row.height = 20;
+      ws.getCell(`A${r}`).value = txt;
+      for (let c = 1; c <= 10; c++) {
+        const cell = row.getCell(c);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B6E9F' } };
+        cell.font = { name: 'Calibri', size: 10, bold: idx === 1, color: { argb: 'FFFFFFFF' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = thinBorder;
+      }
+    });
+
+    // Row 6: Column Headers
+    const headers = [
+      'Sl No',
+      'Product / Item Description',
+      'HSN/SAC',
+      'Unit',
+      'Quantity Sold',
+      'Average Rate (INR)',
+      'Taxable Value (INR)',
+      'GST Tax (INR)',
+      'Total Sales Value (INR)',
+      'Contribution %',
+    ];
+    const row6 = ws.getRow(6);
+    row6.height = 28;
+    headers.forEach((h, idx) => {
+      const cell = row6.getCell(idx + 1);
+      cell.value = h;
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1E293B' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+      cell.border = thinBorder;
+      cell.alignment = { horizontal: idx >= 4 ? 'right' : idx === 1 ? 'left' : 'center', vertical: 'middle' };
+    });
+
+    // Data rows
+    items.forEach((item: any, idx: number) => {
+      const rowNum = 7 + idx;
+      const row = ws.getRow(rowNum);
+      row.height = 20;
+
+      const pct = summary.totalSales > 0 ? ((item.totalSales / summary.totalSales) * 100).toFixed(1) : '0.0';
+
+      row.getCell(1).value = idx + 1;
+      row.getCell(2).value = item.name;
+      row.getCell(3).value = item.hsnSac || '-';
+      row.getCell(4).value = item.unit || 'PCS';
+      row.getCell(5).value = item.totalQty || 0;
+      row.getCell(6).value = item.avgRate ? item.avgRate / 100 : 0;
+      row.getCell(7).value = item.taxableValue ? item.taxableValue / 100 : 0;
+      row.getCell(8).value = item.taxAmount ? item.taxAmount / 100 : 0;
+      row.getCell(9).value = item.totalSales ? item.totalSales / 100 : 0;
+      row.getCell(10).value = `${pct}%`;
+
+      for (let c = 1; c <= 10; c++) {
+        const cell = row.getCell(c);
+        cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF0F172A' } };
+        cell.border = thinBorder;
+        cell.alignment = { horizontal: c >= 5 ? 'right' : c === 2 ? 'left' : 'center', vertical: 'middle' };
+      }
+    });
+
+    // Blank row
+    const blankRowNum = 7 + items.length;
+    const blankRow = ws.getRow(blankRowNum);
+    blankRow.height = 14;
+    for (let c = 1; c <= 10; c++) {
+      blankRow.getCell(c).border = thinBorder;
+    }
+
+    // Grand Totals row
+    const totRowNum = blankRowNum + 1;
+    ws.mergeCells(`A${totRowNum}:D${totRowNum}`);
+    const totRow = ws.getRow(totRowNum);
+    totRow.height = 24;
+    for (let c = 1; c <= 10; c++) {
+      const cell = totRow.getCell(c);
+      cell.border = thinBorder;
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+    }
+
+    const cellTot = ws.getCell(`A${totRowNum}`);
+    cellTot.value = `GRAND TOTALS (${items.length} PRODUCTS)`;
+    cellTot.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+    cellTot.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    ws.getCell(`E${totRowNum}`).value = summary.totalQty;
+    ws.getCell(`E${totRowNum}`).font = { name: 'Calibri', size: 10, bold: true };
+    ws.getCell(`E${totRowNum}`).alignment = { horizontal: 'right', vertical: 'middle' };
+
+    ws.getCell(`F${totRowNum}`).value = '-';
+    ws.getCell(`F${totRowNum}`).alignment = { horizontal: 'center', vertical: 'middle' };
+
+    ws.getCell(`G${totRowNum}`).value = summary.totalTaxable / 100;
+    ws.getCell(`G${totRowNum}`).font = { name: 'Calibri', size: 10, bold: true };
+    ws.getCell(`G${totRowNum}`).alignment = { horizontal: 'right', vertical: 'middle' };
+
+    ws.getCell(`H${totRowNum}`).value = summary.totalTax / 100;
+    ws.getCell(`H${totRowNum}`).font = { name: 'Calibri', size: 10, bold: true };
+    ws.getCell(`H${totRowNum}`).alignment = { horizontal: 'right', vertical: 'middle' };
+
+    ws.getCell(`I${totRowNum}`).value = summary.totalSales / 100;
+    ws.getCell(`I${totRowNum}`).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1D4ED8' } };
+    ws.getCell(`I${totRowNum}`).alignment = { horizontal: 'right', vertical: 'middle' };
+
+    ws.getCell(`J${totRowNum}`).value = '100.0%';
+    ws.getCell(`J${totRowNum}`).font = { name: 'Calibri', size: 10, bold: true };
+    ws.getCell(`J${totRowNum}`).alignment = { horizontal: 'right', vertical: 'middle' };
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeDist = (dist?.name || 'Distributor').replace(/[^a-zA-Z0-9]/g, '_');
+    const safeFrom = (detailedFilters.fromDate || 'start').replace(/-/g, '');
+    const safeTo = (detailedFilters.toDate || 'end').replace(/-/g, '');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Product_Sale_Report_PSR_${safeDist}_${safeFrom}_to_${safeTo}.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Existing summary exports
@@ -1439,6 +1740,28 @@ export default function ReportsPage() {
               </>
             )}
 
+            {activeTab === 'psr' && (
+              <>
+                <button
+                  onClick={handleExportPsrExcel}
+                  className="inline-flex items-center px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                  title="Export Product Sale Report (PSR) to Microsoft Excel (.xlsx) with professional red/blue formatting"
+                >
+                  <FileSpreadsheet className="w-4 h-4 mr-1.5" />
+                  <span>Export to Excel (.xlsx)</span>
+                </button>
+
+                <button
+                  onClick={handleExportPsrPdf}
+                  className="inline-flex items-center px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                  title="Export Product Sale Report (PSR) to corporate PDF report"
+                >
+                  <FileText className="w-4 h-4 mr-1.5" />
+                  <span>Export to PDF</span>
+                </button>
+              </>
+            )}
+
             {activeTab === 'pnl' && (
               <>
                 <button
@@ -1559,6 +1882,17 @@ export default function ReportsPage() {
           >
             <FileText className="w-4 h-4" />
             <span>Detailed Trading & Entries (Item-Wise P&L)</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('psr')}
+            className={`pb-3 transition flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'psr'
+                ? 'border-b-2 border-blue-600 text-blue-600 font-bold'
+                : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Package className="w-4 h-4" />
+            <span>Product Sale Report (PSR)</span>
           </button>
           <button
             onClick={() => setActiveTab('pnl')}
@@ -2075,6 +2409,323 @@ export default function ReportsPage() {
                         </td>
                         <td className="py-3 px-2.5 text-right font-mono text-blue-800 dark:text-blue-300 text-sm font-black">
                           ₹ {formatPaise(computedSummary.netProfit)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Tab: Product Sale Report (PSR) */}
+        {activeTab === 'psr' && (
+          <div className="space-y-6">
+            {/* Filter & Distributor Header Card */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5 space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-lg shadow-md shadow-indigo-500/20">
+                    <Package className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-extrabold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
+                        {currentDistributor?.name || 'Distributor Firm'}
+                      </h2>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200">
+                        PSR Aggregation
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      GSTIN: <span className="font-mono font-medium">{currentDistributor?.gstin || 'Unregistered'}</span> • State: {currentDistributor?.stateCode || '32'} - Kerala
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => fetchPsrReport()}
+                    disabled={loadingPsr}
+                    className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loadingPsr ? 'animate-spin' : ''}`} />
+                    <span>Refresh PSR</span>
+                  </button>
+                  <button
+                    onClick={handleExportPsrExcel}
+                    className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" />
+                    <span>Export Excel (.xlsx)</span>
+                  </button>
+                  <button
+                    onClick={handleExportPsrPdf}
+                    className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition"
+                  >
+                    <FileText className="w-3.5 h-3.5 mr-1.5" />
+                    <span>Export PDF</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Date Range & Search Filters */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    From Date
+                  </label>
+                  <input
+                    type="date"
+                    value={detailedFilters.fromDate}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setDetailedFilters((prev) => ({ ...prev, fromDate: val }));
+                      fetchPsrReport({ fromDate: val });
+                    }}
+                    className="w-full text-xs font-medium px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    To Date
+                  </label>
+                  <input
+                    type="date"
+                    value={detailedFilters.toDate}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setDetailedFilters((prev) => ({ ...prev, toDate: val }));
+                      fetchPsrReport({ toDate: val });
+                    }}
+                    className="w-full text-xs font-medium px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="lg:col-span-2">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Search Product / HSN
+                  </label>
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      placeholder="Filter by product name, brand, or HSN code..."
+                      value={psrSearchQuery}
+                      onChange={(e) => setPsrSearchQuery(e.target.value)}
+                      className="w-full text-xs font-medium pl-9 pr-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Range Presets */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
+                <span className="text-[11px] font-bold text-slate-400 uppercase mr-1">Quick Ranges:</span>
+                {(['today', 'month', '30days', 'fy', 'all'] as const).map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => handleSetDatePreset(preset)}
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:text-blue-600 transition"
+                  >
+                    {preset === 'today'
+                      ? 'Today'
+                      : preset === 'month'
+                      ? 'This Month'
+                      : preset === '30days'
+                      ? 'Last 30 Days'
+                      : preset === 'fy'
+                      ? 'Current FY'
+                      : 'All Time'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* KPI Summary Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+              <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Distinct Products</span>
+                  <Package className="w-4 h-4 text-blue-500" />
+                </div>
+                <div className="text-2xl font-black text-slate-900 dark:text-slate-100">
+                  {computedPsrSummary.distinctProducts}
+                </div>
+                <p className="text-[10px] text-slate-400">Total catalog items sold</p>
+              </div>
+
+              <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Quantity Sold</span>
+                  <ShoppingBag className="w-4 h-4 text-purple-500" />
+                </div>
+                <div className="text-2xl font-black text-purple-600 dark:text-purple-400">
+                  {computedPsrSummary.totalQty.toLocaleString('en-IN')}
+                </div>
+                <p className="text-[10px] text-slate-400">Total units / weight dispatched</p>
+              </div>
+
+              <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Taxable Sales</span>
+                  <Tag className="w-4 h-4 text-emerald-500" />
+                </div>
+                <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                  ₹ {formatPaise(computedPsrSummary.totalTaxable)}
+                </div>
+                <p className="text-[10px] text-slate-400">Net goods value pre-tax</p>
+              </div>
+
+              <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">GST Collected</span>
+                  <Percent className="w-4 h-4 text-amber-500" />
+                </div>
+                <div className="text-2xl font-black text-amber-600 dark:text-amber-400">
+                  ₹ {formatPaise(computedPsrSummary.totalTax)}
+                </div>
+                <p className="text-[10px] text-slate-400">Output CGST + SGST + IGST</p>
+              </div>
+
+              <div className="p-4 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-2xl shadow-md shadow-blue-500/10 space-y-1 col-span-2 sm:col-span-1">
+                <div className="flex items-center justify-between text-blue-100">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Gross Revenue</span>
+                  <TrendingUp className="w-4 h-4 text-white" />
+                </div>
+                <div className="text-2xl font-black text-white">
+                  ₹ {formatPaise(computedPsrSummary.totalSales)}
+                </div>
+                <p className="text-[10px] text-blue-100">Grand billed turnover</p>
+              </div>
+            </div>
+
+            {/* PSR Detailed Table */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <span>Product-Wise Sales Aggregation (PSR)</span>
+                    <span className="text-[11px] font-normal text-slate-500">
+                      ({filteredPsrItems.length} products listed)
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Aggregated by item description across all sales invoices in the selected period
+                  </p>
+                </div>
+              </div>
+
+              {loadingPsr ? (
+                <div className="py-16 text-center text-slate-500">
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
+                  <p className="text-xs font-semibold">Aggregating product sales data...</p>
+                </div>
+              ) : filteredPsrItems.length === 0 ? (
+                <div className="py-16 text-center space-y-2">
+                  <Package className="w-10 h-10 text-slate-300 mx-auto" />
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    No product sales found
+                  </p>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    No sales invoice lines match the selected date range or search query. Post sales invoices or widen your date range.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-700">
+                      <tr>
+                        <th className="py-3 px-3 text-center w-12">#</th>
+                        <th className="py-3 px-4 min-w-[220px]">Product / Item Description</th>
+                        <th className="py-3 px-3 text-center w-24">HSN/SAC</th>
+                        <th className="py-3 px-3 text-center w-20">Unit</th>
+                        <th className="py-3 px-4 text-right w-28">Quantity Sold</th>
+                        <th className="py-3 px-4 text-right w-28">Avg Rate (₹)</th>
+                        <th className="py-3 px-4 text-right w-32">Taxable Value (₹)</th>
+                        <th className="py-3 px-4 text-right w-28">GST Tax (₹)</th>
+                        <th className="py-3 px-4 text-right w-36">Total Sales (₹)</th>
+                        <th className="py-3 px-4 text-right w-32">Share %</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
+                      {filteredPsrItems.map((item: any, idx: number) => {
+                        const pctNum = computedPsrSummary.totalSales > 0
+                          ? ((item.totalSales / computedPsrSummary.totalSales) * 100)
+                          : 0;
+                        const pctStr = pctNum.toFixed(1);
+
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
+                            <td className="py-2.5 px-3 text-center font-mono text-slate-400 text-[11px]">
+                              {idx + 1}
+                            </td>
+                            <td className="py-2.5 px-4 font-semibold text-slate-900 dark:text-slate-100">
+                              {item.name}
+                            </td>
+                            <td className="py-2.5 px-3 text-center font-mono text-[11px] text-slate-500">
+                              {item.hsnSac || '-'}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 uppercase">
+                                {item.unit || 'PCS'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                              {(item.totalQty || 0).toLocaleString('en-IN')}
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-mono text-slate-600 dark:text-slate-400">
+                              ₹ {formatPaise(item.avgRate || 0)}
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-mono font-semibold text-slate-800 dark:text-slate-200">
+                              ₹ {formatPaise(item.taxableValue || 0)}
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-mono text-amber-700 dark:text-amber-400">
+                              ₹ {formatPaise(item.taxAmount || 0)}
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-mono font-black text-blue-700 dark:text-blue-400">
+                              ₹ {formatPaise(item.totalSales || 0)}
+                            </td>
+                            <td className="py-2.5 px-4 text-right">
+                              <div className="flex items-center justify-end space-x-2">
+                                <div className="w-14 bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden hidden sm:block">
+                                  <div
+                                    className="bg-blue-600 h-1.5 rounded-full"
+                                    style={{ width: `${Math.min(pctNum, 100)}%` }}
+                                  />
+                                </div>
+                                <span className="font-mono font-semibold text-slate-700 dark:text-slate-300 text-[11px] w-12 text-right">
+                                  {pctStr}%
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-100/90 dark:bg-slate-800 text-xs">
+                      <tr>
+                        <td colSpan={4} className="py-3 px-4 uppercase text-slate-700 dark:text-slate-300 tracking-wider font-extrabold">
+                          GRAND TOTALS ({filteredPsrItems.length} PRODUCTS)
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-purple-700 dark:text-purple-400 font-black">
+                          {computedPsrSummary.totalQty.toLocaleString('en-IN')}
+                        </td>
+                        <td className="py-3 px-4 text-center font-mono text-slate-400">-</td>
+                        <td className="py-3 px-4 text-right font-mono text-emerald-800 dark:text-emerald-300">
+                          ₹ {formatPaise(computedPsrSummary.totalTaxable)}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-amber-800 dark:text-amber-300">
+                          ₹ {formatPaise(computedPsrSummary.totalTax)}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-blue-800 dark:text-blue-300 text-sm font-black">
+                          ₹ {formatPaise(computedPsrSummary.totalSales)}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono font-extrabold text-slate-900 dark:text-slate-100">
+                          100.0%
                         </td>
                       </tr>
                     </tfoot>

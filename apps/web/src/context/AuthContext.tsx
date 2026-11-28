@@ -157,7 +157,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       export: 'canExport',
     } as const;
 
-    const perm = user.permissions?.[menuKey];
+    const perm = user.permissions?.[menuKey] ||
+      (menuKey === 'invoice_print' ? user.permissions?.['sales_invoices'] : undefined) ||
+      (menuKey === 'returns' ? user.permissions?.['sales_invoices'] : undefined);
     if (!perm) return false;
     return Boolean(perm[actionMap[action]]);
   };

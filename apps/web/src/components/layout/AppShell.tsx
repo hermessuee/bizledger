@@ -35,11 +35,14 @@ import {
   LogOut,
   KeyRound,
   ChevronDown,
+  ChevronRight,
   Menu,
   X,
   UploadCloud,
   ShieldAlert,
   SlidersHorizontal,
+  Printer,
+  RotateCcw,
 } from 'lucide-react';
 
 const MENU_ICONS: Record<MenuKey, React.ComponentType<{ className?: string }>> = {
@@ -48,6 +51,8 @@ const MENU_ICONS: Record<MenuKey, React.ComponentType<{ className?: string }>> =
   vendors: Building2,
   items: Package,
   sales_invoices: FileText,
+  invoice_print: Printer,
+  returns: RotateCcw,
   purchase_bills: FileCheck,
   receipts: Receipt,
   payments: CreditCard,
@@ -71,6 +76,8 @@ const MENU_ROUTES: Record<MenuKey, string> = {
   vendors: '/vendors',
   items: '/items',
   sales_invoices: '/invoices',
+  invoice_print: '/invoice-print',
+  returns: '/returns',
   purchase_bills: '/bills',
   receipts: '/receipts',
   payments: '/payments',
@@ -87,6 +94,52 @@ const MENU_ROUTES: Record<MenuKey, string> = {
   users: '/users',
   audit_log: '/audit-log',
 };
+
+interface NavTreeGroup {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  itemKeys: MenuKey[];
+}
+
+const NAV_GROUPS: NavTreeGroup[] = [
+  {
+    id: 'sales',
+    label: 'Sales & Distribution',
+    icon: Receipt,
+    itemKeys: ['sales_invoices', 'invoice_print', 'returns', 'customers', 'receipts'],
+  },
+  {
+    id: 'procurement',
+    label: 'Procurement & Purchases',
+    icon: FileCheck,
+    itemKeys: ['purchase_bills', 'vendors', 'payments'],
+  },
+  {
+    id: 'inventory',
+    label: 'Inventory & Items',
+    icon: Package,
+    itemKeys: ['items', 'master_governance', 'bulk_upload'],
+  },
+  {
+    id: 'banking',
+    label: 'Banking & Treasury',
+    icon: Landmark,
+    itemKeys: ['banking', 'cheques'],
+  },
+  {
+    id: 'accounting',
+    label: 'Accounting & Reports',
+    icon: BarChart3,
+    itemKeys: ['reports', 'journal', 'chart_of_accounts', 'gst'],
+  },
+  {
+    id: 'admin',
+    label: 'Settings & Admin',
+    icon: Settings,
+    itemKeys: ['dashboard', 'settings', 'users', 'audit_log', 'admin_portal'],
+  },
+];
 
 export function AppShell({
   children,
@@ -123,6 +176,30 @@ export function AppShell({
     upcoming: [],
     totalCount: 0,
   });
+
+  // Tree View Navigation State
+  const findParentGroup = (key: MenuKey) => {
+    return NAV_GROUPS.find((g) => g.itemKeys.includes(key))?.id || 'sales';
+  };
+
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
+    const parent = findParentGroup(currentMenu);
+    return {
+      sales: parent === 'sales',
+      procurement: parent === 'procurement',
+      inventory: parent === 'inventory',
+      banking: parent === 'banking',
+      accounting: parent === 'accounting',
+      admin: parent === 'admin',
+    };
+  });
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  };
 
   // Fetch Cheque Alerts
   const fetchChequeAlerts = async () => {
@@ -240,56 +317,96 @@ export function AppShell({
           </div>
         )}
 
-        {/* Navigation list */}
-        <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-          {Object.entries(MENU_LABELS).map(([key, label]) => {
-            const menuKey = key as MenuKey;
+        {/* Tree View Navigation list */}
+        <nav className="flex-1 overflow-y-auto py-3 px-2.5 space-y-2">
+          {NAV_GROUPS.map((group) => {
+            const visibleItems = group.itemKeys.filter((menuKey) => {
+              if (menuKey === 'admin_portal' && user.role !== 'super_admin') return false;
+              if (
+                user.role !== 'super_admin' &&
+                business?.enabledMenus &&
+                business.enabledMenus.length > 0 &&
+                !business.enabledMenus.includes(menuKey)
+              ) {
+                return false;
+              }
+              return hasPermission(menuKey, 'view');
+            });
 
-            // 1. Super Admin portal: visible only to super_admin role
-            if (menuKey === 'admin_portal' && user.role !== 'super_admin') return null;
-
-            // 2. Check if this module is enabled for the distributor by Super Admin
-            if (
-              user.role !== 'super_admin' &&
-              business?.enabledMenus &&
-              business.enabledMenus.length > 0 &&
-              !business.enabledMenus.includes(menuKey)
-            ) {
-              return null;
-            }
-
-            // 3. Filter strictly by user permission
-            if (!hasPermission(menuKey, 'view')) return null;
-
-            const Icon = MENU_ICONS[menuKey];
-            const route = MENU_ROUTES[menuKey];
-            const isActive = currentMenu === menuKey || pathname === route;
+            if (visibleItems.length === 0) return null;
+            const isExpanded = expandedGroups[group.id] ?? false;
+            const GroupIcon = group.icon;
+            const hasActiveChild = visibleItems.some((key) => currentMenu === key || pathname === MENU_ROUTES[key]);
 
             return (
-              <a
-                key={menuKey}
-                href={route}
-                onClick={(e) => {
-                  e.preventDefault();
-                  router.push(route);
-                  setSidebarOpen(false);
-                }}
-                className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
-                  isActive
-                    ? 'bg-gradient-to-r from-amber-500/20 to-blue-600/30 border border-amber-500/40 text-amber-300 font-semibold shadow-sm'
-                    : 'text-slate-400 hover:text-amber-200 hover:bg-slate-800/70'
-                }`}
-              >
-                <div className="flex items-center space-x-3">
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
-                  <span>{label}</span>
-                </div>
-                {menuKey === 'cheques' && alerts.totalCount > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-slate-950">
-                    {alerts.totalCount}
-                  </span>
+              <div key={group.id} className="space-y-1">
+                {/* Accordion Group Header */}
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.id)}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-bold transition-all select-none ${
+                    hasActiveChild
+                      ? 'text-amber-300 bg-slate-800/80 border border-slate-700/80 shadow-xs'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2.5 truncate">
+                    <GroupIcon className={`w-4 h-4 shrink-0 ${hasActiveChild ? 'text-amber-400' : 'text-slate-400'}`} />
+                    <span className="truncate tracking-wide">{group.label}</span>
+                  </div>
+                  <div className="flex items-center space-x-1.5 shrink-0">
+                    {group.id === 'banking' && alerts.totalCount > 0 && !isExpanded && (
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-slate-950">
+                        {alerts.totalCount}
+                      </span>
+                    )}
+                    {isExpanded ? (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                    )}
+                  </div>
+                </button>
+
+                {/* Sub-items Tree */}
+                {isExpanded && (
+                  <div className="ml-3 pl-2.5 border-l border-slate-800 space-y-0.5 pt-0.5">
+                    {visibleItems.map((menuKey) => {
+                      const Icon = MENU_ICONS[menuKey];
+                      const route = MENU_ROUTES[menuKey];
+                      const label = MENU_LABELS[menuKey];
+                      const isActive = currentMenu === menuKey || pathname === route;
+
+                      return (
+                        <a
+                          key={menuKey}
+                          href={route}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            router.push(route);
+                            setSidebarOpen(false);
+                          }}
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            isActive
+                              ? 'bg-gradient-to-r from-amber-500/20 to-blue-600/30 border border-amber-500/40 text-amber-300 font-semibold shadow-xs'
+                              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2.5 truncate">
+                            <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-500'}`} />
+                            <span className="truncate">{label}</span>
+                          </div>
+                          {menuKey === 'cheques' && alerts.totalCount > 0 && (
+                            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-slate-950">
+                              {alerts.totalCount}
+                            </span>
+                          )}
+                        </a>
+                      );
+                    })}
+                  </div>
                 )}
-              </a>
+              </div>
             );
           })}
         </nav>

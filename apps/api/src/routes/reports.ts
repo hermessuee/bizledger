@@ -486,4 +486,132 @@ reports.get('/detailed-trading', requirePermission('reports', 'view'), async (c)
   });
 });
 
+// GET /reports/psr - Product Sale Report (PSR)
+reports.get('/psr', requirePermission('reports', 'view'), async (c) => {
+  const businessId = c.get('businessId');
+  const user = c.get('user');
+  const isSuperAdmin = user.role === 'super_admin';
+  const queryBiz = c.req.query('businessId');
+  const fromDate = c.req.query('fromDate');
+  const toDate = c.req.query('toDate');
+  const search = (c.req.query('search') || '').trim().toLowerCase();
+
+  const isAll = isSuperAdmin && (queryBiz === 'all' || (!queryBiz && businessId === 'all'));
+  const targetBizId = isAll ? 'all' : (queryBiz && queryBiz !== 'all' ? queryBiz : businessId);
+
+  let docs = memoryStore.documents.filter((d) => d.docType === 'sales_invoice' && d.status === 'posted');
+  if (!isAll) {
+    docs = docs.filter((d) => d.businessId === targetBizId);
+  }
+  if (fromDate) {
+    docs = docs.filter((d) => d.docDate >= fromDate);
+  }
+  if (toDate) {
+    docs = docs.filter((d) => d.docDate <= toDate);
+  }
+
+  const distBiz = isAll ? null : memoryStore.businesses.find((b) => b.id === targetBizId);
+
+  const map = new Map<string, {
+    itemId: string | null;
+    name: string;
+    hsnSac: string;
+    unit: string;
+    totalQty: number;
+    totalTaxable: number;
+    totalTax: number;
+    totalSales: number;
+    invoices: Set<string>;
+  }>();
+
+  for (const doc of docs) {
+    for (const l of doc.lines) {
+      const key = (l.description || 'General Item').trim();
+      const lineUnit = (l as any).unit || 'PCS';
+      const existing = map.get(key) || {
+        itemId: l.itemId || null,
+        name: key,
+        hsnSac: l.hsnSac || '-',
+        unit: lineUnit,
+        totalQty: 0,
+        totalTaxable: 0,
+        totalTax: 0,
+        totalSales: 0,
+        invoices: new Set<string>(),
+      };
+
+      existing.totalQty += l.qty || 0;
+      const taxable = (l.rate * l.qty) - (l.discount || 0);
+      const tax = (l.cgst || 0) + (l.sgst || 0) + (l.igst || 0);
+      existing.totalTaxable += taxable;
+      existing.totalTax += tax;
+      existing.totalSales += l.lineTotal || (taxable + tax);
+      existing.invoices.add(doc.docNo);
+
+      if (l.hsnSac && l.hsnSac !== '-') existing.hsnSac = l.hsnSac;
+      if (lineUnit) existing.unit = lineUnit;
+
+      map.set(key, existing);
+    }
+  }
+
+  let items = Array.from(map.values()).map((v) => ({
+    itemId: v.itemId,
+    name: v.name,
+    hsnSac: v.hsnSac,
+    unit: v.unit,
+    totalQty: v.totalQty,
+    avgRate: v.totalQty > 0 ? Math.round(v.totalTaxable / v.totalQty) : 0,
+    taxableValue: v.totalTaxable,
+    taxAmount: v.totalTax,
+    totalSales: v.totalSales,
+    invoiceCount: v.invoices.size,
+  }));
+
+  if (search) {
+    items = items.filter(
+      (i) => i.name.toLowerCase().includes(search) || i.hsnSac.toLowerCase().includes(search)
+    );
+  }
+
+  items.sort((a, b) => b.totalSales - a.totalSales);
+
+  const grandTotalSales = items.reduce((sum, i) => sum + i.totalSales, 0);
+  const grandTotalQty = items.reduce((sum, i) => sum + i.totalQty, 0);
+  const grandTotalTaxable = items.reduce((sum, i) => sum + i.taxableValue, 0);
+  const grandTotalTax = items.reduce((sum, i) => sum + i.taxAmount, 0);
+
+  const enrichedItems = items.map((i, idx) => ({
+    slNo: idx + 1,
+    ...i,
+    percentContribution: grandTotalSales > 0 ? ((i.totalSales / grandTotalSales) * 100).toFixed(1) : '0.0',
+  }));
+
+  return c.json({
+    distributor: {
+      id: distBiz?.id || 'all',
+      name: isAll ? 'All Distributors Master Consolidation' : (distBiz?.name || 'Distributor Firm'),
+      gstin: distBiz?.gstin || '',
+      address: distBiz?.address || '',
+      stateCode: distBiz?.stateCode || '32',
+      isAll,
+    },
+    filters: {
+      fromDate: fromDate || '',
+      toDate: toDate || '',
+      businessId: targetBizId,
+      search,
+    },
+    summary: {
+      distinctProducts: enrichedItems.length,
+      totalQty: grandTotalQty,
+      totalTaxable: grandTotalTaxable,
+      totalTax: grandTotalTax,
+      totalSales: grandTotalSales,
+      totalInvoices: docs.length,
+    },
+    items: enrichedItems,
+  });
+});
+
 export { reports as reportRoutes };

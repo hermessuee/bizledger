@@ -32,6 +32,7 @@ import {
   Calendar,
   Layers,
   MapPin,
+  Printer,
 } from 'lucide-react';
 
 interface SalesInvoiceLine {
@@ -614,6 +615,48 @@ export default function InvoicesPage() {
     }
   };
 
+  const handlePrintInvoice = (inv: any) => {
+    const biz = distributors.find((b: any) => b.id === inv.businessId) || business;
+    downloadInvoicePdf({
+      business: {
+        name: biz?.name || business?.name || 'DISTRIBUTOR FIRM',
+        gstin: biz?.gstin || business?.gstin || '',
+        address: biz?.address || business?.address || 'Kerala',
+        settings: biz?.settings || business?.settings,
+      },
+      document: {
+        docType: inv.docType || 'sales_invoice',
+        docNo: inv.docNo || 'INV-0000',
+        docDate: inv.docDate,
+        dueDate: inv.dueDate,
+        placeOfSupply: inv.placeOfSupply || '32-Kerala',
+        subtotal: inv.subtotal,
+        taxTotal: inv.taxTotal,
+        roundOff: inv.roundOff || 0,
+        total: inv.total,
+        lines: (inv.lines || []).map((l: any) => ({
+          description: l.description,
+          hsnSac: l.hsnSac,
+          qty: l.qty,
+          unit: l.unit || 'PCS',
+          rate: l.rate,
+          discount: l.discount || 0,
+          gstRate: l.gstRate || 0,
+          cgst: l.cgst || 0,
+          sgst: l.sgst || 0,
+          igst: l.igst || 0,
+          lineTotal: l.lineTotal,
+        })),
+      },
+      party: {
+        name: inv.partyName,
+        gstin: inv.partyGstin,
+        address: inv.partyAddress,
+        phone: inv.partyPhone,
+      },
+    });
+  };
+
   const filteredInvoices = invoices.filter(
     (inv) =>
       inv.docNo?.toLowerCase().includes(search.toLowerCase()) ||
@@ -809,6 +852,14 @@ export default function InvoicesPage() {
                           </>
                         ) : inv.status === 'posted' ? (
                           <div className="inline-flex items-center space-x-1">
+                            <button
+                              onClick={() => handlePrintInvoice(inv)}
+                              className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[11px] font-semibold transition inline-flex items-center space-x-1 shadow-xs"
+                              title="Print Statutory Corporate B&W Tax Invoice"
+                            >
+                              <Printer className="w-3 h-3" />
+                              <span>Print</span>
+                            </button>
                             <button
                               onClick={() => handleVoid(inv.id)}
                               className="px-2 py-1 bg-red-100 dark:bg-red-950/50 hover:bg-red-200 text-red-700 dark:text-red-300 rounded-lg text-[11px] font-semibold transition"
