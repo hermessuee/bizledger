@@ -239,41 +239,230 @@ export default function ReportsPage() {
     return { dist, rows };
   };
 
-  // Export Detailed Report to Excel (.xlsx) with proper formatting and column widths
-  const handleExportDetailedExcel = () => {
-    const data = getDetailedReportRows();
-    if (!data) return;
-    const { dist, rows } = data;
+  // Export Detailed Report to Excel (.xlsx) with exact formatting, fills, cell merges & borders
+  const handleExportDetailedExcel = async () => {
+    if (!detailedData) return;
+    const dist = detailedData.distributor || business;
+    const summary = computedSummary;
+    const list = filteredEntries;
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const ExcelJSModule = await import('exceljs');
+    const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Trading Register', {
+      views: [{ showGridLines: true }],
+    });
 
-    // Set generous column widths so no cell text is clipped or squished in Excel
-    ws['!cols'] = [
-      { wch: 8 },  // Sl No
-      { wch: 14 }, // Date
-      { wch: 24 }, // Voucher / Doc #
-      { wch: 16 }, // Entry Type
-      { wch: 28 }, // Party Name
-      { wch: 18 }, // Party GSTIN
-      { wch: 30 }, // Item Description
-      { wch: 12 }, // HSN/SAC
-      { wch: 14 }, // Quantity
-      { wch: 10 }, // Unit
-      { wch: 16 }, // Rate (INR)
-      { wch: 10 }, // GST %
-      { wch: 16 }, // Tax Amount (INR)
-      { wch: 22 }, // Debit [Purchases] (INR)
-      { wch: 22 }, // Credit [Sales] (INR)
-      { wch: 22 }, // Net Balance (INR)
+    const thinBorder = {
+      top: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      left: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      bottom: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+      right: { style: 'thin' as const, color: { argb: 'FF94A3B8' } },
+    };
+
+    ws.columns = [
+      { width: 8 },  // Sl No
+      { width: 14 }, // Date
+      { width: 24 }, // Voucher / Doc #
+      { width: 16 }, // Entry Type
+      { width: 28 }, // Party Name
+      { width: 18 }, // Party GSTIN
+      { width: 30 }, // Item Description
+      { width: 12 }, // HSN/SAC
+      { width: 14 }, // Quantity
+      { width: 10 }, // Unit
+      { width: 16 }, // Rate
+      { width: 10 }, // GST %
+      { width: 16 }, // Tax Amount
+      { width: 22 }, // Debit
+      { width: 22 }, // Credit
+      { width: 22 }, // Net Balance
     ];
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Trading Register');
+    const distName = (dist?.name || 'DISTRIBUTOR FIRM').toUpperCase();
+    const gstin = dist?.gstin || 'Unregistered';
+    const state = `${dist?.stateCode || '32'} - Kerala`;
+    const addr = dist?.address || 'Kerala';
 
+    const now = new Date();
+    const genTimeStr = `${now.toLocaleDateString('en-GB')}, ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).toLowerCase()}`;
+
+    // Row 1: Merged A1:P1 with Brick Red fill & Bold white text
+    ws.mergeCells('A1:P1');
+    const row1 = ws.getRow(1);
+    row1.height = 26;
+    ws.getCell('A1').value = distName;
+    for (let c = 1; c <= 16; c++) {
+      const cell = row1.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB83B2F' } };
+      cell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = thinBorder;
+    }
+
+    // Rows 2-5: Merged A:P with Slate Blue fill & White text
+    const headerInfo = [
+      { text: `GSTIN: ${gstin} State: ${state} Address: ${addr}`, bold: false },
+      { text: 'DETAILED TRADING & PROFIT & LOSS REGISTER (ITEM-WISE DAYBOOK)', bold: true },
+      { text: `Period From: ${detailedFilters.fromDate || 'Beginning'} Period To: ${detailedFilters.toDate || 'Present'} Generated: ${genTimeStr} Total Lines: ${list.length}`, bold: false },
+      { text: `Total Purchases (Debit): Rs. ${(summary.totalPurchasesDebit / 100).toFixed(2)} Total Sales (Credit): Rs. ${(summary.totalSalesCredit / 100).toFixed(2)} Net Trading Margin: Rs. ${(summary.netProfit / 100).toFixed(2)} Total Qty: ${summary.totalQty} Total Tax: Rs. ${(summary.totalTax / 100).toFixed(2)}`, bold: false },
+    ];
+
+    headerInfo.forEach((item, idx) => {
+      const r = idx + 2;
+      ws.mergeCells(`A${r}:P${r}`);
+      const row = ws.getRow(r);
+      row.height = 20;
+      ws.getCell(`A${r}`).value = item.text;
+      for (let c = 1; c <= 16; c++) {
+        const cell = row.getCell(c);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B6E9F' } };
+        cell.font = { name: 'Calibri', size: 10, bold: item.bold, color: { argb: 'FFFFFFFF' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = thinBorder;
+      }
+    });
+
+    // Row 6: Column Headers
+    const headers = [
+      'Sl No',
+      'Date',
+      'Voucher / Doc #',
+      'Entry Type',
+      'Party Name (Customer / Vendor)',
+      'Party GSTIN',
+      'Item Description',
+      'HSN/SAC',
+      'Quantity',
+      'Unit',
+      'Rate (INR)',
+      'GST %',
+      'Tax Amount (INR)',
+      'Debit [Purchases] (INR)',
+      'Credit [Sales] (INR)',
+      'Net Balance (INR)',
+    ];
+    const row6 = ws.getRow(6);
+    row6.height = 32;
+    headers.forEach((h, idx) => {
+      const cell = row6.getCell(idx + 1);
+      cell.value = h;
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1E293B' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.border = thinBorder;
+    });
+
+    // Rows 7+: Data Rows
+    list.forEach((e: any, idx: number) => {
+      const r = 7 + idx;
+      const row = ws.getRow(r);
+      row.height = 20;
+
+      const values = [
+        idx + 1,
+        e.docDate,
+        e.docNo,
+        e.typeLabel,
+        e.partyName || '-',
+        e.partyGstin || '-',
+        e.description || '-',
+        e.hsnSac || '-',
+        e.qty || 0,
+        e.unit || 'KG',
+        e.rate ? e.rate / 100 : 0,
+        e.gstRate ? `${e.gstRate}%` : '0%',
+        e.taxAmount ? e.taxAmount / 100 : 0,
+        e.debit ? e.debit / 100 : 0,
+        e.credit ? e.credit / 100 : 0,
+        e.runningBalance ? e.runningBalance / 100 : 0,
+      ];
+
+      values.forEach((val, cIdx) => {
+        const cell = row.getCell(cIdx + 1);
+        cell.value = val;
+        cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF0F172A' } };
+        cell.border = thinBorder;
+
+        const colNum = cIdx + 1;
+        if (colNum === 1 || colNum === 2 || colNum === 8 || colNum === 10 || colNum === 12) {
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        } else if (colNum >= 9 && colNum !== 10 && colNum !== 12) {
+          cell.alignment = { horizontal: 'right', vertical: 'middle' };
+        } else {
+          cell.alignment = { horizontal: 'left', vertical: 'middle' };
+        }
+      });
+    });
+
+    // Blank row after data
+    const blankRowNum = 7 + list.length;
+    const blankRow = ws.getRow(blankRowNum);
+    blankRow.height = 14;
+    for (let c = 1; c <= 16; c++) {
+      const cell = blankRow.getCell(c);
+      cell.border = thinBorder;
+    }
+
+    // Grand Totals row
+    const totalsRowNum = blankRowNum + 1;
+    ws.mergeCells(`A${totalsRowNum}:F${totalsRowNum}`);
+    const totalsRow = ws.getRow(totalsRowNum);
+    totalsRow.height = 22;
+    for (let c = 1; c <= 16; c++) {
+      const cell = totalsRow.getCell(c);
+      cell.border = thinBorder;
+    }
+
+    const cellA = ws.getCell(`A${totalsRowNum}`);
+    cellA.value = 'GRAND TOTALS';
+    cellA.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+    cellA.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    const cellG = ws.getCell(`G${totalsRowNum}`);
+    cellG.value = `${list.length} item lines`;
+    cellG.font = { name: 'Calibri', size: 10, color: { argb: 'FF475569' } };
+    cellG.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    const cellI = ws.getCell(`I${totalsRowNum}`);
+    cellI.value = summary.totalQty;
+    cellI.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+    cellI.alignment = { horizontal: 'right', vertical: 'middle' };
+
+    const cellM = ws.getCell(`M${totalsRowNum}`);
+    cellM.value = summary.totalTax / 100;
+    cellM.font = { name: 'Calibri', size: 10, color: { argb: 'FF0F172A' } };
+    cellM.alignment = { horizontal: 'right', vertical: 'middle' };
+
+    const cellN = ws.getCell(`N${totalsRowNum}`);
+    cellN.value = summary.totalPurchasesDebit / 100;
+    cellN.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+    cellN.alignment = { horizontal: 'right', vertical: 'middle' };
+
+    const cellO = ws.getCell(`O${totalsRowNum}`);
+    cellO.value = summary.totalSalesCredit / 100;
+    cellO.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+    cellO.alignment = { horizontal: 'right', vertical: 'middle' };
+
+    const cellP = ws.getCell(`P${totalsRowNum}`);
+    cellP.value = summary.netProfit / 100;
+    cellP.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+    cellP.alignment = { horizontal: 'right', vertical: 'middle' };
+
+    // Write buffer and trigger browser download
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
     const safeDist = (dist?.name || 'Distributor').replace(/[^a-zA-Z0-9]/g, '_');
     const safeFrom = (detailedFilters.fromDate || 'start').replace(/-/g, '');
     const safeTo = (detailedFilters.toDate || 'end').replace(/-/g, '');
-    XLSX.writeFile(wb, `Detailed_Trading_Report_${safeDist}_${safeFrom}_to_${safeTo}.xlsx`, { bookType: 'xlsx' });
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Detailed_Trading_Report_${safeDist}_${safeFrom}_to_${safeTo}.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Export Detailed Report to CSV with exact 16-column format
